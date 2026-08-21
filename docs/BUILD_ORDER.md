@@ -91,16 +91,56 @@ npm run db:seed
 
 `localhost` is not a demo. Welcome's phone cannot reach your laptop.
 
-- Railway or Render. Root directory `apps/api`, build `npm run build`,
-  start `npm run start:prod`.
-- Set every var from `apps/api/.env.example`.
-- CORS is already `origin: true`.
+**Railway.** `railway.json` at the repo root already carries the build and start
+commands, the health check and the replica count, so there is nothing to type
+into the dashboard except environment variables.
 
-**Checkpoint:** `npm run smoke:auth -- --base https://<your-url>/v1` — all 24 green
-against the deployed instance. (Plain `smoke` would report 9 passed and skip the
-rest, which looks green enough to deploy on.) Then `curl https://<your-url>/v1/health` from
-your phone on mobile data. Post the URL in the team channel the moment it works — that unblocks the
-Flutter and Next.js work more than any endpoint does.
+```json
+"buildCommand": "npm ci && npm run build --workspace api"
+"startCommand": "npm run start:prod --workspace api"
+```
+
+**Leave Root Directory blank — do not set it to `apps/api`.** This is an npm
+workspace: the lockfile is at the repo root, and `main.ts` loads the contract
+from `../../packages/contract/openapi.yaml` relative to the working directory.
+Point Railway at `apps/api` and you get an install without the root lockfile and
+a silent loss of `/docs`. Both commands above were run from the repo root and
+verified — health `ok`, `/docs` 200.
+
+Set these variables (from `apps/api/.env.example`):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | The 6543 transaction pooler. **The only database URL the runtime reads.** Percent-encode the password. |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` — also the JWKS origin |
+| `SUPABASE_SERVICE_ROLE_KEY` | server only |
+| `SUPABASE_JWT_SECRET` | **leave unset** — this project signs ES256 |
+| `NODE_ENV` | `production` |
+| `API_PREFIX` | `v1` |
+| `R2_*`, `FEE_*`, `MAX_BASKET_SPREAD_M` | from `.env.example` |
+
+Do **not** set `PORT`; Railway injects it and `main.ts` already reads it and
+binds `0.0.0.0`. `DIRECT_URL` is Prisma-CLI-only and not needed at runtime.
+
+**Keep it at one replica.** `QuoteService` holds quotes in a `Map` in process
+memory (`orders/quote.service.ts:50`). Two replicas means a customer can be
+quoted by one instance and check out against another, which returns
+`QUOTE_EXPIRED` for no visible reason. This is also why serverless — Vercel,
+Lambda — is the wrong target for this API until quotes live in Postgres.
+
+**Checkpoint:** `npm run smoke:auth -- --base https://<your-url>/v1` — all 24
+green against the deployed instance. (Plain `smoke` would report 9 passed and
+skip the rest, which looks green enough to deploy on.) Then
+`curl https://<your-url>/v1/health` from your phone on mobile data.
+
+One gap to know about: the Railway health check passes whenever the process
+answers, because `/health` returns **200 even when `status` is `degraded`** —
+that is what `packages/contract/openapi.yaml` specifies, and the contract wins.
+A deploy with an unreachable database will look healthy on the Railway
+dashboard. Read the `status` field, don't trust the green dot.
+
+Post the URL in the team channel the moment it works — that unblocks the Flutter
+and Next.js work more than any endpoint does.
 
 ### 4 · Hand over (15 min)
 

@@ -26,6 +26,7 @@ db/schema.sql             Postgres/Supabase schema. Source of truth (triggers, R
 db/seed.sql               3 Soweto shops, 12 real SA products, a week of POS sales, one live order.
 db/reset.sql              Empties the demo data so the seed can be re-applied. Destructive.
 docs/                     API_CONTRACT, ERD, BUILD_ORDER.
+railway.json              Railway build/start/health config. Root dir stays the repo root.
 mock/                     Prism mock server so client work is never blocked on the backend.
 ```
 
