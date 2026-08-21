@@ -1,5 +1,23 @@
 {
+  "name": "smartkasi",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "check-types": "turbo check-types",
+    "lint": "turbo lint",
+    "mock": "npx @stoplight/prism-cli mock packages/contract/openapi.yaml --port 4010 --host 0.0.0.0 --errors",
+    "contract:lint": "npx @redocly/cli lint packages/contract/openapi.yaml"
+  },
   "devDependencies": {
     "turbo": "^2.10.11"
+  },
+  "dependencies": {
+    "@supabase/server": "^1.4.1",
+    "supabase": "^2.115.0"
   }
 }

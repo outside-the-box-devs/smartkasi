@@ -13,8 +13,88 @@
  * 🟢 You can import this file directly.
  */
 
-import * as Prisma from './internal/prismaNamespaceBrowser.js'
+import * as Prisma from './internal/prismaNamespaceBrowser'
 export { Prisma }
-export * as $Enums from './enums.js'
-export * from './enums.js';
-
+export * as $Enums from './enums'
+export * from './enums';
+/**
+ * Model Profile
+ * 
+ */
+export type Profile = Prisma.ProfileModel
+/**
+ * Model Shop
+ * 
+ */
+export type Shop = Prisma.ShopModel
+/**
+ * Model ShopStaff
+ * 
+ */
+export type ShopStaff = Prisma.ShopStaffModel
+/**
+ * Model Category
+ * 
+ */
+export type Category = Prisma.CategoryModel
+/**
+ * Model Product
+ * 
+ */
+export type Product = Prisma.ProductModel
+/**
+ * Model ShopProduct
+ * 
+ */
+export type ShopProduct = Prisma.ShopProductModel
+/**
+ * Model StockMovement
+ * Append-only. Never UPDATE, never DELETE — see docs/ERD.md § decision 2.
+ */
+export type StockMovement = Prisma.StockMovementModel
+/**
+ * Model Sale
+ * 
+ */
+export type Sale = Prisma.SaleModel
+/**
+ * Model SaleItem
+ * 
+ */
+export type SaleItem = Prisma.SaleItemModel
+/**
+ * Model Order
+ * 
+ */
+export type Order = Prisma.OrderModel
+/**
+ * Model OrderShop
+ * 
+ */
+export type OrderShop = Prisma.OrderShopModel
+/**
+ * Model OrderItem
+ * 
+ */
+export type OrderItem = Prisma.OrderItemModel
+/**
+ * Model Flyer
+ * 
+ */
+export type Flyer = Prisma.FlyerModel
+/**
+ * Model Courier
+ * 
+ */
+export type Courier = Prisma.CourierModel
+/**
+ * Model Delivery
+ * 
+ */
+export type Delivery = Prisma.DeliveryModel
+/**
+ * Model DeliveryPosition
+ * Internal only. NEVER returned on a customer-facing endpoint — a published
+ * courier route in a township is an armed-robbery vector.
+ */
+export type DeliveryPosition = Prisma.DeliveryPositionModel

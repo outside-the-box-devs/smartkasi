@@ -17,8 +17,8 @@
 
 import * as runtime from "@prisma/client/runtime/index-browser"
 
-export type * from '../models.js'
-export type * from './prismaNamespace.js'
+export type * from '../models'
+export type * from './prismaNamespace'
 
 export const Decimal = runtime.Decimal
 
@@ -51,7 +51,22 @@ export const AnyNull = runtime.AnyNull
 
 
 export const ModelName = {
-
+  Profile: 'Profile',
+  Shop: 'Shop',
+  ShopStaff: 'ShopStaff',
+  Category: 'Category',
+  Product: 'Product',
+  ShopProduct: 'ShopProduct',
+  StockMovement: 'StockMovement',
+  Sale: 'Sale',
+  SaleItem: 'SaleItem',
+  Order: 'Order',
+  OrderShop: 'OrderShop',
+  OrderItem: 'OrderItem',
+  Flyer: 'Flyer',
+  Courier: 'Courier',
+  Delivery: 'Delivery',
+  DeliveryPosition: 'DeliveryPosition'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -68,4 +83,295 @@ export const TransactionIsolationLevel = runtime.makeStrictEnum({
 } as const)
 
 export type TransactionIsolationLevel = (typeof TransactionIsolationLevel)[keyof typeof TransactionIsolationLevel]
+
+
+export const ProfileScalarFieldEnum = {
+  id: 'id',
+  role: 'role',
+  fullName: 'fullName',
+  phone: 'phone',
+  avatarUrl: 'avatarUrl',
+  homeLat: 'homeLat',
+  homeLng: 'homeLng',
+  homeAddress: 'homeAddress',
+  isActive: 'isActive',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ProfileScalarFieldEnum = (typeof ProfileScalarFieldEnum)[keyof typeof ProfileScalarFieldEnum]
+
+
+export const ShopScalarFieldEnum = {
+  id: 'id',
+  ownerId: 'ownerId',
+  name: 'name',
+  slug: 'slug',
+  description: 'description',
+  phone: 'phone',
+  logoUrl: 'logoUrl',
+  lat: 'lat',
+  lng: 'lng',
+  addressLine: 'addressLine',
+  township: 'township',
+  city: 'city',
+  province: 'province',
+  tradingLicenceNo: 'tradingLicenceNo',
+  licenceStatus: 'licenceStatus',
+  licenceDocUrl: 'licenceDocUrl',
+  licenceExpiresAt: 'licenceExpiresAt',
+  mode: 'mode',
+  acceptsOrders: 'acceptsOrders',
+  acceptsDelivery: 'acceptsDelivery',
+  isActive: 'isActive',
+  opensAt: 'opensAt',
+  closesAt: 'closesAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ShopScalarFieldEnum = (typeof ShopScalarFieldEnum)[keyof typeof ShopScalarFieldEnum]
+
+
+export const ShopStaffScalarFieldEnum = {
+  shopId: 'shopId',
+  userId: 'userId',
+  canManageInventory: 'canManageInventory',
+  canVoidSales: 'canVoidSales',
+  createdAt: 'createdAt'
+} as const
+
+export type ShopStaffScalarFieldEnum = (typeof ShopStaffScalarFieldEnum)[keyof typeof ShopStaffScalarFieldEnum]
+
+
+export const CategoryScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  parentId: 'parentId',
+  icon: 'icon'
+} as const
+
+export type CategoryScalarFieldEnum = (typeof CategoryScalarFieldEnum)[keyof typeof CategoryScalarFieldEnum]
+
+
+export const ProductScalarFieldEnum = {
+  id: 'id',
+  barcode: 'barcode',
+  name: 'name',
+  brand: 'brand',
+  unitSize: 'unitSize',
+  categoryId: 'categoryId',
+  imageUrl: 'imageUrl',
+  createdByShopId: 'createdByShopId',
+  isVerified: 'isVerified',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ProductScalarFieldEnum = (typeof ProductScalarFieldEnum)[keyof typeof ProductScalarFieldEnum]
+
+
+export const ShopProductScalarFieldEnum = {
+  id: 'id',
+  shopId: 'shopId',
+  productId: 'productId',
+  priceCents: 'priceCents',
+  costCents: 'costCents',
+  stockQty: 'stockQty',
+  lowStockThreshold: 'lowStockThreshold',
+  isAvailable: 'isAvailable',
+  clientUpdatedAt: 'clientUpdatedAt',
+  updatedAt: 'updatedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type ShopProductScalarFieldEnum = (typeof ShopProductScalarFieldEnum)[keyof typeof ShopProductScalarFieldEnum]
+
+
+export const StockMovementScalarFieldEnum = {
+  id: 'id',
+  shopId: 'shopId',
+  productId: 'productId',
+  delta: 'delta',
+  reason: 'reason',
+  refType: 'refType',
+  refId: 'refId',
+  actorId: 'actorId',
+  note: 'note',
+  occurredAt: 'occurredAt',
+  recordedAt: 'recordedAt'
+} as const
+
+export type StockMovementScalarFieldEnum = (typeof StockMovementScalarFieldEnum)[keyof typeof StockMovementScalarFieldEnum]
+
+
+export const SaleScalarFieldEnum = {
+  id: 'id',
+  shopId: 'shopId',
+  clientSaleId: 'clientSaleId',
+  cashierId: 'cashierId',
+  subtotalCents: 'subtotalCents',
+  discountCents: 'discountCents',
+  totalCents: 'totalCents',
+  amountTenderedCents: 'amountTenderedCents',
+  changeCents: 'changeCents',
+  paymentMethod: 'paymentMethod',
+  status: 'status',
+  soldAt: 'soldAt',
+  syncedAt: 'syncedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type SaleScalarFieldEnum = (typeof SaleScalarFieldEnum)[keyof typeof SaleScalarFieldEnum]
+
+
+export const SaleItemScalarFieldEnum = {
+  id: 'id',
+  saleId: 'saleId',
+  productId: 'productId',
+  productName: 'productName',
+  qty: 'qty',
+  unitPriceCents: 'unitPriceCents',
+  lineTotalCents: 'lineTotalCents'
+} as const
+
+export type SaleItemScalarFieldEnum = (typeof SaleItemScalarFieldEnum)[keyof typeof SaleItemScalarFieldEnum]
+
+
+export const OrderScalarFieldEnum = {
+  id: 'id',
+  orderNumber: 'orderNumber',
+  customerId: 'customerId',
+  status: 'status',
+  fulfilmentType: 'fulfilmentType',
+  dropoffLat: 'dropoffLat',
+  dropoffLng: 'dropoffLng',
+  dropoffAddress: 'dropoffAddress',
+  dropoffNotes: 'dropoffNotes',
+  subtotalCents: 'subtotalCents',
+  serviceFeeCents: 'serviceFeeCents',
+  deliveryFeeCents: 'deliveryFeeCents',
+  totalCents: 'totalCents',
+  quoteShopCount: 'quoteShopCount',
+  quoteMaxRadiusM: 'quoteMaxRadiusM',
+  placedAt: 'placedAt',
+  completedAt: 'completedAt',
+  cancelledAt: 'cancelledAt',
+  cancellationReason: 'cancellationReason',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OrderScalarFieldEnum = (typeof OrderScalarFieldEnum)[keyof typeof OrderScalarFieldEnum]
+
+
+export const OrderShopScalarFieldEnum = {
+  id: 'id',
+  orderId: 'orderId',
+  shopId: 'shopId',
+  status: 'status',
+  subtotalCents: 'subtotalCents',
+  distanceM: 'distanceM',
+  rejectedReason: 'rejectedReason',
+  acceptedAt: 'acceptedAt',
+  readyAt: 'readyAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OrderShopScalarFieldEnum = (typeof OrderShopScalarFieldEnum)[keyof typeof OrderShopScalarFieldEnum]
+
+
+export const OrderItemScalarFieldEnum = {
+  id: 'id',
+  orderShopId: 'orderShopId',
+  productId: 'productId',
+  productName: 'productName',
+  qty: 'qty',
+  unitPriceCents: 'unitPriceCents',
+  lineTotalCents: 'lineTotalCents',
+  fulfilledQty: 'fulfilledQty'
+} as const
+
+export type OrderItemScalarFieldEnum = (typeof OrderItemScalarFieldEnum)[keyof typeof OrderItemScalarFieldEnum]
+
+
+export const FlyerScalarFieldEnum = {
+  id: 'id',
+  shopId: 'shopId',
+  title: 'title',
+  imageUrl: 'imageUrl',
+  startsAt: 'startsAt',
+  endsAt: 'endsAt',
+  isActive: 'isActive',
+  createdAt: 'createdAt'
+} as const
+
+export type FlyerScalarFieldEnum = (typeof FlyerScalarFieldEnum)[keyof typeof FlyerScalarFieldEnum]
+
+
+export const CourierScalarFieldEnum = {
+  id: 'id',
+  mode: 'mode',
+  maxRadiusM: 'maxRadiusM',
+  isOnline: 'isOnline',
+  vehicleReg: 'vehicleReg',
+  idDocUrl: 'idDocUrl',
+  isVerified: 'isVerified',
+  ratingAvg: 'ratingAvg',
+  createdAt: 'createdAt'
+} as const
+
+export type CourierScalarFieldEnum = (typeof CourierScalarFieldEnum)[keyof typeof CourierScalarFieldEnum]
+
+
+export const DeliveryScalarFieldEnum = {
+  id: 'id',
+  orderId: 'orderId',
+  courierId: 'courierId',
+  mode: 'mode',
+  status: 'status',
+  payoutCents: 'payoutCents',
+  assignedAt: 'assignedAt',
+  collectedAt: 'collectedAt',
+  deliveredAt: 'deliveredAt',
+  proofPhotoUrl: 'proofPhotoUrl',
+  createdAt: 'createdAt'
+} as const
+
+export type DeliveryScalarFieldEnum = (typeof DeliveryScalarFieldEnum)[keyof typeof DeliveryScalarFieldEnum]
+
+
+export const DeliveryPositionScalarFieldEnum = {
+  id: 'id',
+  deliveryId: 'deliveryId',
+  lat: 'lat',
+  lng: 'lng',
+  recordedAt: 'recordedAt'
+} as const
+
+export type DeliveryPositionScalarFieldEnum = (typeof DeliveryPositionScalarFieldEnum)[keyof typeof DeliveryPositionScalarFieldEnum]
+
+
+export const SortOrder = {
+  asc: 'asc',
+  desc: 'desc'
+} as const
+
+export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const QueryMode = {
+  default: 'default',
+  insensitive: 'insensitive'
+} as const
+
+export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
+export const NullsOrder = {
+  first: 'first',
+  last: 'last'
+} as const
+
+export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
 

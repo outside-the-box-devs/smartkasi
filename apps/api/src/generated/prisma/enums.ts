@@ -9,7 +9,121 @@
 * 🟢 You can import this file directly.
 */
 
+export const UserRole = {
+  customer: 'customer',
+  shop_owner: 'shop_owner',
+  shop_staff: 'shop_staff',
+  courier: 'courier',
+  admin: 'admin'
+} as const
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole]
 
 
-// This file is empty because there are no enums in the schema.
-export {}
+export const LicenceStatus = {
+  none: 'none',
+  pending: 'pending',
+  verified: 'verified',
+  rejected: 'rejected',
+  expired: 'expired'
+} as const
+
+export type LicenceStatus = (typeof LicenceStatus)[keyof typeof LicenceStatus]
+
+
+export const ShopMode = {
+  advertising_only: 'advertising_only',
+  inventory_only: 'inventory_only',
+  full: 'full'
+} as const
+
+export type ShopMode = (typeof ShopMode)[keyof typeof ShopMode]
+
+
+export const PaymentMethod = {
+  cash: 'cash',
+  card: 'card',
+  qr: 'qr',
+  account: 'account'
+} as const
+
+export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
+
+
+export const SaleStatus = {
+  completed: 'completed',
+  voided: 'voided'
+} as const
+
+export type SaleStatus = (typeof SaleStatus)[keyof typeof SaleStatus]
+
+
+export const StockReason = {
+  sale: 'sale',
+  restock: 'restock',
+  adjustment: 'adjustment',
+  order: 'order',
+  void: 'void',
+  shrinkage: 'shrinkage'
+} as const
+
+export type StockReason = (typeof StockReason)[keyof typeof StockReason]
+
+
+export const FulfilmentType = {
+  delivery: 'delivery',
+  collection: 'collection'
+} as const
+
+export type FulfilmentType = (typeof FulfilmentType)[keyof typeof FulfilmentType]
+
+
+export const OrderStatus = {
+  pending_payment: 'pending_payment',
+  placed: 'placed',
+  accepted: 'accepted',
+  partially_accepted: 'partially_accepted',
+  preparing: 'preparing',
+  ready: 'ready',
+  dispatched: 'dispatched',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  rejected: 'rejected'
+} as const
+
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus]
+
+
+export const OrderShopStatus = {
+  pending: 'pending',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  preparing: 'preparing',
+  ready: 'ready',
+  collected: 'collected',
+  cancelled: 'cancelled'
+} as const
+
+export type OrderShopStatus = (typeof OrderShopStatus)[keyof typeof OrderShopStatus]
+
+
+export const CourierMode = {
+  foot: 'foot',
+  bicycle: 'bicycle',
+  vehicle: 'vehicle'
+} as const
+
+export type CourierMode = (typeof CourierMode)[keyof typeof CourierMode]
+
+
+export const DeliveryStatus = {
+  unassigned: 'unassigned',
+  assigned: 'assigned',
+  en_route_pickup: 'en_route_pickup',
+  collected: 'collected',
+  en_route_dropoff: 'en_route_dropoff',
+  delivered: 'delivered',
+  failed: 'failed'
+} as const
+
+export type DeliveryStatus = (typeof DeliveryStatus)[keyof typeof DeliveryStatus]
