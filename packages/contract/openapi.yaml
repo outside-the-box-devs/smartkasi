@@ -1,0 +1,2605 @@
+openapi: 3.0.3
+
+info:
+  title: SmartKasi API
+  version: 1.0.0-rc1
+  description: |
+    Hyperlocal spaza commerce for South African townships — offline-capable POS,
+    a shared product catalog with cross-shop price comparison, multi-shop
+    marketplace orders, and (v2) courier delivery.
+
+    ## How to read this document
+
+    **Every operation is tagged `[LIVE]` or `[STUB]`.**
+
+    | Tag | Meaning | What clients may assume |
+    |---|---|---|
+    | `[LIVE]` | Real implementation, real database, ships Sat 22 Aug 10:00 SAST | Build against it. Behaviour is contractual. |
+    | `[STUB]` | Route exists and returns a **fixed, schema-valid fake response**. No database, no logic. | Wire your UI to it. **Do not build business logic on the values.** Shapes will not change; values will. |
+
+    Machine-readable: every operation also carries `x-smartkasi-status`.
+
+    ## Frozen contract
+
+    Once this file is handed to the client teams the **shapes are frozen**.
+    Additive changes only (new optional fields, new endpoints). Any breaking
+    change gets a new path version and an announcement in the team channel —
+    not a silent edit.
+
+    ## Non-negotiable rules
+
+    1. **Money is integer cents (ZAR).** Field names always end `_cents`.
+       `1850` is R18.50. Never send or expect a decimal.
+    2. **Auth is Supabase.** This API issues no tokens and has no
+       `/login`. See § Authentication.
+    3. **Courier location and route are never returned to a customer.**
+       See § Route privacy.
+    4. **Offline writes carry an idempotency key.** See § Offline POS protocol.
+
+    ## Authentication
+
+    There are no auth endpoints here on purpose. Clients authenticate directly
+    against Supabase using `supabase-flutter` / `supabase-js`, and send the
+    resulting access token to this API:
+
+    ```
+    Authorization: Bearer <supabase_access_token>
+    ```
+
+    The API verifies the JWT signature against the Supabase JWKS and reads:
+    - `sub` → the user id (`profiles.id`)
+    - `app_metadata.role` → one of `customer | shop_owner | shop_staff | courier | admin`
+
+    Token refresh is entirely the client SDK's job. A `401` with code
+    `TOKEN_EXPIRED` means: refresh via Supabase, retry once.
+
+    ## Offline POS protocol
+
+    The till is the source of truth while it is offline. The server's job is to
+    accept a replay without duplicating.
+
+    **Push** — `POST /shops/{shopId}/sales/batch`
+    - Client generates `client_sale_id` (UUID v4) at the moment of sale and
+      persists it locally forever.
+    - Client may post the same batch any number of times. `(shop_id,
+      client_sale_id)` is unique; duplicates return `status: "duplicate"` with
+      the original `sale_id`, **not** an error.
+    - The response is per-item. A batch of 60 with 2 bad rows returns `207` with
+      58 `created` and 2 `failed`. Never all-or-nothing — one malformed sale must
+      not block a week of takings.
+    - `sold_at` is the **client's** clock. The server records its own
+      `synced_at`. Do not attempt to correct clock skew client-side.
+
+    **Pull** — `GET /shops/{shopId}/sync?since={iso8601}`
+    - Returns everything in that shop's catalog and inventory changed since the
+      timestamp, plus a `server_time` to use as the next cursor.
+    - Inventory conflicts resolve **last-write-wins on `client_updated_at`**.
+      A till offline for three days must not overwrite a price the owner changed
+      on the dashboard yesterday.
+
+    ## Route privacy
+
+    Township delivery has a specific threat model: publishing a courier's live
+    position or route tells anyone holding the customer's phone exactly where a
+    person carrying cash and goods will be, and when.
+
+    Therefore, on every customer-facing response:
+    - No courier coordinates.
+    - No route geometry or polyline.
+    - No courier full name, phone, or photo before `collected`.
+    - ETA is a **band** (`eta_band: "10-20min"`), never a precise timestamp.
+
+    `CustomerDelivery` is the only delivery schema a customer app should ever
+    render. `CourierDelivery` (which does contain addresses and sequencing) is
+    for the courier app and admin dashboard only. If you find yourself needing a
+    field that isn't on `CustomerDelivery`, that is the design working, not a gap.
+
+    ## Errors
+
+    Every non-2xx response has the same shape:
+
+    ```json
+    {
+      "error": {
+        "code": "INSUFFICIENT_STOCK",
+        "message": "Iwisa Super Maize Meal 5kg: 3 requested, 1 available",
+        "details": [{ "field": "items[2].qty", "issue": "exceeds available stock" }],
+        "request_id": "req_01J8XK2M9P"
+      }
+    }
+    ```
+
+    Clients switch on `error.code`, never on `error.message` — messages are for
+    humans and will be reworded.
+
+    ## Pagination
+
+    Offset-based. `?page=1&per_page=25` (max 100). List responses are always
+    `{ "data": [...], "meta": { "page", "per_page", "total", "total_pages" } }`.
+
+  contact:
+    name: SmartKasi backend team
+    email: nqmasilela777@gmail.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:3000/v1
+    description: Local development
+  - url: http://localhost:4010/v1
+    description: Prism mock server (see mock/README.md) — use this until Sat 10:00
+  - url: https://api.smartkasi.co.za/v1
+    description: Production (not provisioned yet)
+
+security:
+  - supabaseJwt: []
+
+tags:
+  - name: System
+    description: Health and metadata.
+  - name: Me
+    description: The authenticated user's own profile.
+  - name: Shops
+    description: Shop directory, geo search, onboarding, trading licence.
+  - name: Catalog
+    description: Shared global product catalog. Barcode lookup for the POS scanner.
+  - name: Search
+    description: Cross-shop product search with price comparison.
+  - name: Inventory
+    description: A shop's stock and pricing. Shop staff only.
+  - name: Sync
+    description: Offline delta pull for the POS app.
+  - name: Sales
+    description: POS transactions, including offline batch flush.
+  - name: Orders
+    description: Multi-shop marketplace baskets, customer and shop side.
+  - name: Flyers
+    description: Promotional images for advertising-only shops.
+  - name: Uploads
+    description: Presigned Cloudflare R2 upload URLs.
+  - name: Delivery
+    description: "[STUB in v1] Courier assignment and tracking."
+  - name: AI
+    description: "[STUB in v1] Dish-to-ingredients basket builder."
+  - name: Payments
+    description: "[STUB in v1] Yoco integration. v1 is cash only."
+
+paths:
+  # ===========================================================================
+  # SYSTEM
+  # ===========================================================================
+  /health:
+    get:
+      tags: [System]
+      summary: "[LIVE] Health check"
+      operationId: getHealth
+      x-smartkasi-status: LIVE
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version, server_time]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  version: { type: string }
+                  server_time: { type: string, format: date-time }
+              example:
+                status: ok
+                version: 1.0.0-rc1
+                server_time: "2026-08-22T08:00:00Z"
+
+  # ===========================================================================
+  # ME
+  # ===========================================================================
+  /me:
+    get:
+      tags: [Me]
+      summary: "[LIVE] Get my profile"
+      description: |
+        Called on app start after Supabase sign-in. If the profile row does not
+        yet exist it is created from the JWT claims, so this doubles as
+        "complete registration".
+      operationId: getMe
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: The authenticated user's profile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Me]
+      summary: "[LIVE] Update my profile"
+      operationId: updateMe
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name: { type: string, maxLength: 120 }
+                phone: { type: string, description: "E.164", example: "+27821234567" }
+                avatar_url: { type: string, format: uri }
+                home_address: { type: string }
+                home_lat: { type: number, format: double }
+                home_lng: { type: number, format: double }
+      responses:
+        "200":
+          description: Updated profile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ===========================================================================
+  # SHOPS
+  # ===========================================================================
+  /shops:
+    get:
+      tags: [Shops]
+      summary: "[LIVE] List / search shops near a point"
+      description: |
+        Powers the customer app's map and shop list. Results are ordered by
+        distance ascending when `lat`/`lng` are supplied, otherwise by name.
+      operationId: listShops
+      x-smartkasi-status: LIVE
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/Lat" }
+        - { $ref: "#/components/parameters/Lng" }
+        - { $ref: "#/components/parameters/RadiusM" }
+        - name: q
+          in: query
+          description: Fuzzy match on shop name.
+          schema: { type: string }
+        - name: accepts_orders
+          in: query
+          description: Only shops that can take online orders (implies a verified licence).
+          schema: { type: boolean }
+        - name: open_now
+          in: query
+          schema: { type: boolean }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of shops.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ShopSummary" }
+              example:
+                data:
+                  - id: 7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa
+                    name: Mama Thoko's Tuckshop
+                    slug: mama-thokos-tuckshop
+                    logo_url: https://cdn.smartkasi.co.za/shops/thoko.jpg
+                    address_line: 1423 Vilakazi St
+                    township: Orlando West
+                    city: Soweto
+                    lat: -26.2380
+                    lng: 27.9083
+                    distance_m: 480
+                    mode: full
+                    accepts_orders: true
+                    accepts_delivery: true
+                    is_open_now: true
+                  - id: 7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb
+                    name: Bra Sipho Spaza
+                    slug: bra-sipho-spaza
+                    logo_url: null
+                    address_line: 88 Mooki St
+                    township: Orlando East
+                    city: Soweto
+                    lat: -26.2461
+                    lng: 27.9212
+                    distance_m: 1620
+                    mode: advertising_only
+                    accepts_orders: false
+                    accepts_delivery: false
+                    is_open_now: true
+                meta: { page: 1, per_page: 25, total: 2, total_pages: 1 }
+    post:
+      tags: [Shops]
+      summary: "[LIVE] Register a shop"
+      description: |
+        Creates the shop in `advertising_only` mode. `accepts_orders` cannot be
+        set here — it unlocks only after the trading licence is verified via
+        `POST /shops/{shopId}/licence`.
+      operationId: createShop
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateShopRequest" }
+      responses:
+        "201":
+          description: Shop created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shop" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A shop with that slug already exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /shops/{shopId}:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Shops]
+      summary: "[LIVE] Get a shop"
+      operationId: getShop
+      x-smartkasi-status: LIVE
+      security: []
+      responses:
+        "200":
+          description: Shop detail.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shop" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Shops]
+      summary: "[LIVE] Update a shop"
+      description: "Owner only. `accepts_orders: true` is rejected unless `licence_status = verified`."
+      operationId: updateShop
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateShopRequest" }
+      responses:
+        "200":
+          description: Updated shop.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shop" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`LICENCE_NOT_VERIFIED` — cannot enable ordering yet."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /shops/{shopId}/licence:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    post:
+      tags: [Shops]
+      summary: "[LIVE] Submit trading licence for verification"
+      description: |
+        Upload the document to R2 first via `POST /uploads/presign`, then submit
+        the resulting URL here. Sets `licence_status` to `pending`. In v1 an
+        admin verifies manually from the dashboard.
+      operationId: submitLicence
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trading_licence_no, licence_doc_url]
+              properties:
+                trading_licence_no: { type: string, example: "GP/SOW/2026/00841" }
+                licence_doc_url: { type: string, format: uri }
+                licence_expires_at: { type: string, format: date }
+      responses:
+        "202":
+          description: Submitted, awaiting review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shop" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # CATALOG
+  # ===========================================================================
+  /products:
+    get:
+      tags: [Catalog]
+      summary: "[LIVE] Search the global product catalog"
+      operationId: listProducts
+      x-smartkasi-status: LIVE
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          example: maize
+        - name: category_id
+          in: query
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of products.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Product" }
+    post:
+      tags: [Catalog]
+      summary: "[LIVE] Create a product"
+      description: |
+        Two modes:
+        - **Global item** — send a `barcode`. If that barcode already exists the
+          existing product is returned with `200` (not an error). This is what
+          the POS calls when a scan misses.
+        - **Shop-local item** — omit `barcode` and send `shop_id`. Creates an
+          item that belongs to that shop only and is excluded from price
+          comparison (a homemade kota is not comparable across shops).
+      operationId: createProduct
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProductRequest" }
+      responses:
+        "200":
+          description: Product with that barcode already existed; returning it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "201":
+          description: Product created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /products/{productId}:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Catalog]
+      summary: "[LIVE] Get a product"
+      operationId: getProduct
+      x-smartkasi-status: LIVE
+      security: []
+      responses:
+        "200":
+          description: Product detail including cross-shop price statistics.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /products/barcode/{barcode}:
+    parameters:
+      - name: barcode
+        in: path
+        required: true
+        description: EAN-13 / UPC as read by the scanner.
+        schema: { type: string }
+        example: "6001068000456"
+    get:
+      tags: [Catalog]
+      summary: "[LIVE] Look up a scanned barcode"
+      description: |
+        **The hottest path in the POS app.** Called on every scan.
+
+        Pass `shop_id` to get this shop's price and stock inline, so the till
+        needs one request per scan rather than two.
+
+        A `404` is a normal outcome, not an error condition — the cashier is
+        then prompted to name the item, and the app calls
+        `POST /products` followed by `POST /shops/{shopId}/inventory`.
+      operationId: getProductByBarcode
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: shop_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BarcodeLookupResult" }
+              example:
+                product:
+                  id: 3f0a9d10-aaaa-4c11-9999-111111111111
+                  barcode: "6001068000456"
+                  name: Iwisa Super Maize Meal
+                  brand: Iwisa
+                  unit_size: 5kg
+                  image_url: https://cdn.smartkasi.co.za/products/iwisa-5kg.jpg
+                  category: { id: 9a1b0000-0000-4000-8000-000000000001, name: Staples }
+                  is_verified: true
+                shop_product:
+                  id: c1d2e3f4-0000-4000-8000-000000000111
+                  price_cents: 8999
+                  stock_qty: 14
+                  low_stock_threshold: 5
+                  is_available: true
+        "404":
+          description: Unknown barcode — prompt the cashier to add it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                error:
+                  code: PRODUCT_NOT_FOUND
+                  message: No product matches barcode 6001068000456
+                  request_id: req_01J8XK2M9P
+
+  # ===========================================================================
+  # SEARCH / PRICE COMPARISON
+  # ===========================================================================
+  /search/products:
+    get:
+      tags: [Search]
+      summary: "[LIVE] Search products across nearby shops with price comparison"
+      description: |
+        The differentiating feature. One query returns each matching product
+        together with every nearby shop that stocks it, its price there, and the
+        distance — plus the average price across the radius so the customer can
+        see whether R21 is a rip-off.
+
+        Only barcoded products participate. Shop-local items are excluded by
+        design: they aren't comparable.
+
+        Offers are sorted by `price_cents` ascending by default; pass
+        `sort=distance` for nearest-first.
+      operationId: searchProducts
+      x-smartkasi-status: LIVE
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+          example: maize meal
+        - { $ref: "#/components/parameters/Lat" }
+        - { $ref: "#/components/parameters/Lng" }
+        - { $ref: "#/components/parameters/RadiusM" }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [price, distance], default: price }
+        - name: in_stock_only
+          in: query
+          schema: { type: boolean, default: true }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: Matching products with offers.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ProductSearchResult" }
+              example:
+                data:
+                  - product:
+                      id: 3f0a9d10-aaaa-4c11-9999-111111111111
+                      barcode: "6001068000456"
+                      name: Iwisa Super Maize Meal
+                      brand: Iwisa
+                      unit_size: 5kg
+                      image_url: https://cdn.smartkasi.co.za/products/iwisa-5kg.jpg
+                      is_verified: true
+                    price_stats:
+                      offer_count: 3
+                      avg_price_cents: 8766
+                      min_price_cents: 8500
+                      max_price_cents: 8999
+                    offers:
+                      - shop_id: 7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa
+                        shop_name: Mama Thoko's Tuckshop
+                        distance_m: 480
+                        price_cents: 8500
+                        stock_qty: 14
+                        accepts_orders: true
+                      - shop_id: 7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb
+                        shop_name: Bra Sipho Spaza
+                        distance_m: 620
+                        price_cents: 8800
+                        stock_qty: 6
+                        accepts_orders: true
+                      - shop_id: 7b0e1c2a-3333-4a3b-9c11-cccccccccccc
+                        shop_name: Kasi Fresh Mini Market
+                        distance_m: 1450
+                        price_cents: 8999
+                        stock_qty: 40
+                        accepts_orders: true
+                meta: { page: 1, per_page: 25, total: 1, total_pages: 1 }
+
+  # ===========================================================================
+  # INVENTORY
+  # ===========================================================================
+  /shops/{shopId}/inventory:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Inventory]
+      summary: "[LIVE] List a shop's inventory"
+      operationId: listInventory
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: low_stock
+          in: query
+          description: Only items at or below their low-stock threshold.
+          schema: { type: boolean }
+        - name: updated_since
+          in: query
+          schema: { type: string, format: date-time }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of inventory lines.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/InventoryItem" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Inventory]
+      summary: "[LIVE] Add a product to a shop's inventory"
+      operationId: addInventoryItem
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id, price_cents]
+              properties:
+                product_id: { type: string, format: uuid }
+                price_cents: { type: integer, format: int64, minimum: 0, example: 8500 }
+                cost_cents: { type: integer, format: int64, minimum: 0 }
+                stock_qty: { type: integer, minimum: 0, default: 0 }
+                low_stock_threshold: { type: integer, minimum: 0, default: 5 }
+      responses:
+        "201":
+          description: Added.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryItem" }
+        "409":
+          description: "`ALREADY_STOCKED` — use PATCH instead."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /shops/{shopId}/inventory/{shopProductId}:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+      - name: shopProductId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Inventory]
+      summary: "[LIVE] Update price, stock or threshold"
+      description: |
+        Setting `stock_qty` writes an `adjustment` movement to the stock ledger
+        equal to the difference — it does not silently overwrite history.
+
+        Send `client_updated_at` from an offline device so the server can apply
+        last-write-wins correctly.
+      operationId: updateInventoryItem
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price_cents: { type: integer, format: int64, minimum: 0 }
+                cost_cents: { type: integer, format: int64, minimum: 0 }
+                stock_qty: { type: integer, minimum: 0 }
+                low_stock_threshold: { type: integer, minimum: 0 }
+                is_available: { type: boolean }
+                client_updated_at: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryItem" }
+        "409":
+          description: "`STALE_WRITE` — a newer `client_updated_at` already applied. Body carries the winning row."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryItem" }
+
+  /shops/{shopId}/inventory/bulk-upsert:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    post:
+      tags: [Inventory, Sync]
+      summary: "[LIVE] Bulk upsert inventory (offline flush)"
+      description: |
+        Per-item results, never all-or-nothing. Last-write-wins on
+        `client_updated_at`. Max 500 items per call.
+      operationId: bulkUpsertInventory
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [product_id, price_cents, client_updated_at]
+                    properties:
+                      product_id: { type: string, format: uuid }
+                      price_cents: { type: integer, format: int64, minimum: 0 }
+                      stock_qty: { type: integer, minimum: 0 }
+                      low_stock_threshold: { type: integer, minimum: 0 }
+                      is_available: { type: boolean }
+                      client_updated_at: { type: string, format: date-time }
+      responses:
+        "207":
+          description: Per-item outcome.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results, server_time]
+                properties:
+                  server_time: { type: string, format: date-time }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id: { type: string, format: uuid }
+                        status: { type: string, enum: [created, updated, skipped_stale, failed] }
+                        shop_product_id: { type: string, format: uuid, nullable: true }
+                        error: { $ref: "#/components/schemas/ErrorDetail" }
+
+  /shops/{shopId}/inventory/low-stock:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Inventory]
+      summary: "[LIVE] Low-stock alert list"
+      description: Items where `stock_qty <= low_stock_threshold`. Drives the owner's alert badge.
+      operationId: getLowStock
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: Items needing a restock.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/InventoryItem" }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      out_of_stock: { type: integer }
+
+  # ===========================================================================
+  # SYNC
+  # ===========================================================================
+  /shops/{shopId}/sync:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Sync]
+      summary: "[LIVE] Delta pull for the offline POS"
+      description: |
+        Everything the till needs to work offline, changed since `since`.
+
+        First run: omit `since` to get a full snapshot. Then store `server_time`
+        from the response and pass it as `since` next time. Do **not** use the
+        device clock as the cursor.
+
+        `deleted_shop_product_ids` carries tombstones so the till can drop items
+        the owner removed while it was offline.
+      operationId: syncShop
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: since
+          in: query
+          description: ISO 8601 cursor from the previous response's `server_time`.
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Delta payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server_time, is_full_snapshot, shop, products, inventory, deleted_shop_product_ids]
+                properties:
+                  server_time: { type: string, format: date-time }
+                  is_full_snapshot: { type: boolean }
+                  shop: { $ref: "#/components/schemas/Shop" }
+                  products:
+                    type: array
+                    items: { $ref: "#/components/schemas/Product" }
+                  inventory:
+                    type: array
+                    items: { $ref: "#/components/schemas/InventoryItem" }
+                  deleted_shop_product_ids:
+                    type: array
+                    items: { type: string, format: uuid }
+
+  # ===========================================================================
+  # SALES / POS
+  # ===========================================================================
+  /shops/{shopId}/sales:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Sales]
+      summary: "[LIVE] List sales"
+      operationId: listSales
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: cashier_id
+          in: query
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of sales.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Sale" }
+    post:
+      tags: [Sales]
+      summary: "[LIVE] Record a single sale (online till)"
+      description: |
+        Idempotent on `client_sale_id`. Reposting the same `client_sale_id`
+        returns `200` with the original sale rather than creating a second one.
+      operationId: createSale
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSaleRequest" }
+      responses:
+        "200":
+          description: Already recorded; returning the original.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sale" }
+        "201":
+          description: Sale recorded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sale" }
+        "422":
+          description: "`INSUFFICIENT_STOCK` or `TOTALS_MISMATCH`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /shops/{shopId}/sales/batch:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    post:
+      tags: [Sales, Sync]
+      summary: "[LIVE] Flush queued offline sales"
+      description: |
+        The offline workhorse. Max 200 sales per call.
+
+        **Partial success is the normal case.** Always read `results` item by
+        item; never treat `207` as failure. Rows returned as `duplicate` are a
+        success — mark them synced locally and stop resending.
+
+        Only clear a sale from the device queue when its `status` is `created`
+        or `duplicate`. `failed` rows stay queued for human review.
+      operationId: batchCreateSales
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sales]
+              properties:
+                sales:
+                  type: array
+                  maxItems: 200
+                  items: { $ref: "#/components/schemas/CreateSaleRequest" }
+            example:
+              sales:
+                - client_sale_id: 11111111-1111-4111-8111-111111111111
+                  sold_at: "2026-08-21T14:32:11Z"
+                  payment_method: cash
+                  subtotal_cents: 3450
+                  discount_cents: 0
+                  total_cents: 3450
+                  amount_tendered_cents: 5000
+                  change_cents: 1550
+                  items:
+                    - { product_id: 3f0a9d10-aaaa-4c11-9999-111111111111, qty: 1, unit_price_cents: 2000 }
+                    - { product_id: 3f0a9d10-bbbb-4c11-9999-222222222222, qty: 2, unit_price_cents: 725 }
+      responses:
+        "207":
+          description: Per-sale outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchSaleResponse" }
+              example:
+                server_time: "2026-08-22T09:14:02Z"
+                summary: { created: 1, duplicate: 1, failed: 1 }
+                results:
+                  - client_sale_id: 11111111-1111-4111-8111-111111111111
+                    status: created
+                    sale_id: 9c8b7a60-0000-4000-8000-000000000001
+                  - client_sale_id: 22222222-2222-4222-8222-222222222222
+                    status: duplicate
+                    sale_id: 9c8b7a60-0000-4000-8000-000000000002
+                  - client_sale_id: 33333333-3333-4333-8333-333333333333
+                    status: failed
+                    sale_id: null
+                    error:
+                      code: TOTALS_MISMATCH
+                      message: "total_cents 3400 does not equal subtotal 3450 minus discount 0"
+
+  /shops/{shopId}/sales/{saleId}:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+      - name: saleId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Sales]
+      summary: "[LIVE] Get a sale (receipt)"
+      operationId: getSale
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: Sale with line items.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sale" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /shops/{shopId}/sales/{saleId}/void:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+      - name: saleId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Sales]
+      summary: "[LIVE] Void a sale"
+      description: |
+        Marks the sale `voided` and writes compensating `void` movements to the
+        stock ledger. The sale row is never deleted — voids must be auditable.
+        Requires `can_void_sales`.
+      operationId: voidSale
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 240 }
+      responses:
+        "200":
+          description: Voided.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sale" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /shops/{shopId}/reports/daily:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Sales]
+      summary: "[LIVE] Daily takings summary"
+      description: The cash-up screen. Defaults to today in Africa/Johannesburg.
+      operationId: getDailyReport
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Summary for the day.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  sale_count: { type: integer }
+                  gross_cents: { type: integer, format: int64 }
+                  discount_cents: { type: integer, format: int64 }
+                  net_cents: { type: integer, format: int64 }
+                  voided_count: { type: integer }
+                  by_payment_method:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        method: { type: string, enum: [cash, card, qr, account] }
+                        count: { type: integer }
+                        total_cents: { type: integer, format: int64 }
+                  top_products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id: { type: string, format: uuid }
+                        name: { type: string }
+                        qty: { type: integer }
+                        total_cents: { type: integer, format: int64 }
+              example:
+                date: "2026-08-21"
+                sale_count: 87
+                gross_cents: 412350
+                discount_cents: 0
+                net_cents: 412350
+                voided_count: 2
+                by_payment_method:
+                  - { method: cash, count: 81, total_cents: 388900 }
+                  - { method: card, count: 6, total_cents: 23450 }
+                top_products:
+                  - { product_id: 3f0a9d10-aaaa-4c11-9999-111111111111, name: Iwisa Super Maize Meal, qty: 12, total_cents: 102000 }
+
+  # ===========================================================================
+  # ORDERS
+  # ===========================================================================
+  /orders/quote:
+    post:
+      tags: [Orders]
+      summary: "[LIVE] Price a basket before placing it"
+      description: |
+        Call this whenever the basket or the delivery address changes. Returns
+        per-shop subtotals plus the service fee.
+
+        **Fee model (v1, deliberately simple and legible to the customer):**
+
+        ```
+        service_fee = base
+                    + per_extra_shop x (shop_count - 1)
+                    + per_km x ceil(max_distance_km)
+        ```
+
+        More shops and more distance mean a bigger fee, and a bigger courier
+        payout — that is the intended incentive, not a bug.
+
+        The returned `quote_id` is valid for 15 minutes and must be passed to
+        `POST /orders`. This prevents the fee changing between the customer
+        seeing it and confirming.
+      operationId: quoteOrder
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuoteRequest" }
+      responses:
+        "200":
+          description: Quote.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Quote" }
+              example:
+                quote_id: qt_01J8XK5N2A
+                expires_at: "2026-08-22T09:29:00Z"
+                fulfilment_type: delivery
+                subtotal_cents: 17450
+                service_fee_cents: 1800
+                delivery_fee_cents: 0
+                total_cents: 19250
+                shop_count: 2
+                max_distance_m: 1620
+                fee_breakdown:
+                  - { label: Base service fee, amount_cents: 1000 }
+                  - { label: "Extra shop (1)", amount_cents: 500 }
+                  - { label: "Distance (2 km)", amount_cents: 300 }
+                legs:
+                  - shop_id: 7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa
+                    shop_name: Mama Thoko's Tuckshop
+                    distance_m: 480
+                    subtotal_cents: 8500
+                    all_items_available: true
+                  - shop_id: 7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb
+                    shop_name: Bra Sipho Spaza
+                    distance_m: 1620
+                    subtotal_cents: 8950
+                    all_items_available: false
+                    unavailable_items:
+                      - { product_id: 3f0a9d10-cccc-4c11-9999-333333333333, name: Sunlight Dishwashing Liquid 750ml, requested_qty: 2, available_qty: 0 }
+        "422":
+          description: "`SHOPS_TOO_FAR_APART` or `OUTSIDE_SERVICE_AREA`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /orders:
+    get:
+      tags: [Orders]
+      summary: "[LIVE] List my orders"
+      operationId: listMyOrders
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/OrderStatus" }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of orders.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Order" }
+    post:
+      tags: [Orders]
+      summary: "[LIVE] Place an order"
+      description: |
+        Requires a `quote_id` from `POST /orders/quote` that has not expired.
+        Prices are taken from the quote, not recalculated — the customer pays
+        what they were shown.
+
+        Stock is **not** reserved at placement. A shop rejects its leg if it
+        cannot fulfil. Reserving stock across independent spazas that also sell
+        over the counter would be a fiction.
+      operationId: createOrder
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
+      responses:
+        "201":
+          description: Order placed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "409":
+          description: "`QUOTE_EXPIRED` — re-quote and show the customer the new total."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /orders/{orderId}:
+    parameters:
+      - { $ref: "#/components/parameters/OrderId" }
+    get:
+      tags: [Orders]
+      summary: "[LIVE] Get an order"
+      operationId: getOrder
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: Order with per-shop legs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orders/{orderId}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/OrderId" }
+    post:
+      tags: [Orders]
+      summary: "[LIVE] Cancel an order"
+      description: Allowed while status is `placed`, `accepted` or `partially_accepted`. Not after `dispatched`.
+      operationId: cancelOrder
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 240 }
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "409":
+          description: "`ORDER_NOT_CANCELLABLE`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /shops/{shopId}/orders:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Orders]
+      summary: "[LIVE] Incoming orders for a shop"
+      description: The shop app's order queue. Poll every 20s in v1; realtime is a v2 concern.
+      operationId: listShopOrders
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/OrderShopStatus" }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of order legs for this shop.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ShopOrderLeg" }
+
+  /orders/{orderId}/legs/{shopId}/accept:
+    parameters:
+      - { $ref: "#/components/parameters/OrderId" }
+      - { $ref: "#/components/parameters/ShopId" }
+    post:
+      tags: [Orders]
+      summary: "[LIVE] Shop accepts its leg"
+      description: |
+        Optionally short-ship by sending `fulfilled` quantities. The order total
+        is recalculated and the customer is charged for what they actually get.
+      operationId: acceptOrderLeg
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fulfilled:
+                  type: array
+                  items:
+                    type: object
+                    required: [order_item_id, fulfilled_qty]
+                    properties:
+                      order_item_id: { type: string, format: uuid }
+                      fulfilled_qty: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Leg accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShopOrderLeg" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orders/{orderId}/legs/{shopId}/reject:
+    parameters:
+      - { $ref: "#/components/parameters/OrderId" }
+      - { $ref: "#/components/parameters/ShopId" }
+    post:
+      tags: [Orders]
+      summary: "[LIVE] Shop rejects its leg"
+      description: |
+        If other legs remain the order becomes `partially_accepted` and
+        continues. If every leg is rejected the order becomes `rejected`.
+      operationId: rejectOrderLeg
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [out_of_stock, closed, too_busy, cannot_fulfil, other] }
+                note: { type: string }
+      responses:
+        "200":
+          description: Leg rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShopOrderLeg" }
+
+  /orders/{orderId}/legs/{shopId}/ready:
+    parameters:
+      - { $ref: "#/components/parameters/OrderId" }
+      - { $ref: "#/components/parameters/ShopId" }
+    post:
+      tags: [Orders]
+      summary: "[LIVE] Shop marks its leg packed and ready"
+      description: For collection orders this is what notifies the customer. For delivery it makes the leg collectable.
+      operationId: readyOrderLeg
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: Leg ready.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShopOrderLeg" }
+
+  # ===========================================================================
+  # FLYERS
+  # ===========================================================================
+  /shops/{shopId}/flyers:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    get:
+      tags: [Flyers]
+      summary: "[LIVE] List a shop's active flyers"
+      operationId: listFlyers
+      x-smartkasi-status: LIVE
+      security: []
+      parameters:
+        - name: active_only
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Flyers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Flyer" }
+    post:
+      tags: [Flyers]
+      summary: "[LIVE] Upload a flyer"
+      description: |
+        The entire value proposition for an `advertising_only` shop — no POS, no
+        inventory, just a photo of this week's specials. Upload the image via
+        `POST /uploads/presign` first.
+      operationId: createFlyer
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, image_url, starts_at, ends_at]
+              properties:
+                title: { type: string, maxLength: 120 }
+                image_url: { type: string, format: uri }
+                starts_at: { type: string, format: date }
+                ends_at: { type: string, format: date }
+      responses:
+        "201":
+          description: Flyer created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Flyer" }
+
+  /shops/{shopId}/flyers/{flyerId}:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+      - name: flyerId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Flyers]
+      summary: "[LIVE] Remove a flyer"
+      operationId: deleteFlyer
+      x-smartkasi-status: LIVE
+      responses:
+        "204": { description: Deleted. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # UPLOADS
+  # ===========================================================================
+  /uploads/presign:
+    post:
+      tags: [Uploads]
+      summary: "[LIVE] Get a presigned Cloudflare R2 upload URL"
+      description: |
+        Images never pass through this API. Client asks for a presigned URL,
+        `PUT`s the bytes straight to R2, then sends the returned `public_url`
+        on whatever resource it belongs to.
+      operationId: presignUpload
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose, content_type]
+              properties:
+                purpose: { type: string, enum: [shop_logo, product_image, flyer, licence_doc, delivery_proof, avatar] }
+                content_type: { type: string, enum: ["image/jpeg", "image/png", "image/webp", "application/pdf"] }
+                shop_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Upload URL. Expires in 10 minutes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [upload_url, public_url, expires_at, method]
+                properties:
+                  upload_url: { type: string, format: uri }
+                  public_url: { type: string, format: uri }
+                  method: { type: string, enum: [PUT] }
+                  headers:
+                    type: object
+                    additionalProperties: { type: string }
+                  expires_at: { type: string, format: date-time }
+              example:
+                upload_url: https://r2.smartkasi.co.za/uploads/abc123?X-Amz-Signature=...
+                public_url: https://cdn.smartkasi.co.za/uploads/abc123.jpg
+                method: PUT
+                headers: { Content-Type: image/jpeg }
+                expires_at: "2026-08-22T09:24:00Z"
+
+  # ===========================================================================
+  # DELIVERY  — STUB
+  # ===========================================================================
+  /orders/{orderId}/delivery:
+    parameters:
+      - { $ref: "#/components/parameters/OrderId" }
+    post:
+      tags: [Delivery]
+      summary: "[STUB] Request a courier for an order"
+      description: |
+        **STUB.** Returns a fixed `unassigned` delivery. No courier matching
+        runs, nobody is dispatched, no payout is calculated.
+
+        Safe to wire the button and the resulting status screen. Do not build
+        anything that depends on the status ever changing.
+      operationId: requestDelivery
+      x-smartkasi-status: STUB
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preferred_mode: { $ref: "#/components/schemas/CourierMode" }
+      responses:
+        "202":
+          description: Delivery requested (stubbed).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerDelivery" }
+              example:
+                id: dd000000-0000-4000-8000-000000000001
+                order_id: 88888888-8888-4888-8888-888888888888
+                status: unassigned
+                mode: null
+                eta_band: null
+                courier: null
+                updated_at: "2026-08-22T09:20:00Z"
+
+  /deliveries/{deliveryId}:
+    parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Delivery]
+      summary: "[STUB] Track a delivery (customer view)"
+      description: |
+        **STUB.** Returns a fixed `en_route_dropoff` delivery.
+
+        Note what this schema does **not** contain: coordinates, route, courier
+        phone. That is deliberate and permanent — see § Route privacy. The
+        customer app gets a status enum and a coarse ETA band, and that is the
+        complete set of things it is allowed to draw.
+      operationId: getDelivery
+      x-smartkasi-status: STUB
+      responses:
+        "200":
+          description: Delivery status (stubbed).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerDelivery" }
+              example:
+                id: dd000000-0000-4000-8000-000000000001
+                order_id: 88888888-8888-4888-8888-888888888888
+                status: en_route_dropoff
+                mode: bicycle
+                eta_band: 10-20min
+                courier: { display_name: "Thabo M.", mode: bicycle, rating_avg: 4.8 }
+                updated_at: "2026-08-22T09:41:00Z"
+
+  /courier/jobs:
+    get:
+      tags: [Delivery]
+      summary: "[STUB] Available jobs for the logged-in courier"
+      description: "**STUB.** Returns two fixed jobs. No real matching, no radius filtering."
+      operationId: listCourierJobs
+      x-smartkasi-status: STUB
+      responses:
+        "200":
+          description: Offered jobs (stubbed).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/CourierJob" }
+              example:
+                data:
+                  - delivery_id: dd000000-0000-4000-8000-000000000001
+                    order_number: SK-8F3K2P
+                    pickup_count: 2
+                    total_distance_m: 2100
+                    payout_cents: 1500
+                    mode: bicycle
+                    expires_at: "2026-08-22T09:25:00Z"
+                  - delivery_id: dd000000-0000-4000-8000-000000000002
+                    order_number: SK-9G4L3Q
+                    pickup_count: 1
+                    total_distance_m: 850
+                    payout_cents: 900
+                    mode: foot
+                    expires_at: "2026-08-22T09:26:00Z"
+
+  /courier/jobs/{deliveryId}/accept:
+    parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Delivery]
+      summary: "[STUB] Courier accepts a job"
+      operationId: acceptCourierJob
+      x-smartkasi-status: STUB
+      responses:
+        "200":
+          description: Accepted (stubbed). Returns the courier-side view, which *does* include addresses.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierDelivery" }
+
+  /courier/jobs/{deliveryId}/collect:
+    parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Delivery]
+      summary: "[STUB] Courier confirms pickup from a shop"
+      operationId: collectCourierJob
+      x-smartkasi-status: STUB
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shop_id]
+              properties:
+                shop_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Collected (stubbed).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierDelivery" }
+
+  /courier/jobs/{deliveryId}/deliver:
+    parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Delivery]
+      summary: "[STUB] Courier confirms handover to the customer"
+      operationId: deliverCourierJob
+      x-smartkasi-status: STUB
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                proof_photo_url: { type: string, format: uri }
+                cash_collected_cents: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Delivered (stubbed).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierDelivery" }
+
+  # ===========================================================================
+  # AI  — STUB
+  # ===========================================================================
+  /ai/dish-ingredients:
+    post:
+      tags: [AI]
+      summary: "[STUB] Turn a dish name into a shoppable basket"
+      description: |
+        **STUB.** Returns a hardcoded pap-and-chakalaka basket regardless of
+        input. No model is called.
+
+        Shape is final: an ingredient list, each mapped to catalog products with
+        the cheapest nearby offer, so the response can be dropped straight into
+        `POST /orders/quote`.
+      operationId: dishToIngredients
+      x-smartkasi-status: STUB
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dish]
+              properties:
+                dish: { type: string, example: pap and chakalaka }
+                servings: { type: integer, minimum: 1, default: 4 }
+                lat: { type: number, format: double }
+                lng: { type: number, format: double }
+                radius_m: { type: integer, default: 2000 }
+      responses:
+        "200":
+          description: Suggested basket (stubbed).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DishBasket" }
+              example:
+                dish: pap and chakalaka
+                servings: 4
+                estimated_total_cents: 14750
+                ingredients:
+                  - name: Maize meal
+                    quantity: 1kg
+                    matched_product:
+                      id: 3f0a9d10-aaaa-4c11-9999-111111111111
+                      name: Iwisa Super Maize Meal
+                      unit_size: 5kg
+                    best_offer:
+                      shop_id: 7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa
+                      shop_name: Mama Thoko's Tuckshop
+                      distance_m: 480
+                      price_cents: 8500
+                  - name: Chakalaka (tinned)
+                    quantity: 2 tins
+                    matched_product:
+                      id: 3f0a9d10-dddd-4c11-9999-444444444444
+                      name: Koo Chakalaka Mild
+                      unit_size: 410g
+                    best_offer:
+                      shop_id: 7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb
+                      shop_name: Bra Sipho Spaza
+                      distance_m: 620
+                      price_cents: 2199
+
+  # ===========================================================================
+  # PAYMENTS — STUB
+  # ===========================================================================
+  /payments/intent:
+    post:
+      tags: [Payments]
+      summary: "[STUB] Create a payment intent"
+      description: |
+        **STUB.** v1 is cash on delivery / cash at till. Yoco is not wired.
+        Always returns `status: "not_implemented"` with a `checkout_url` of
+        `null` so client code can branch on it today without pretending a
+        payment succeeded.
+      operationId: createPaymentIntent
+      x-smartkasi-status: STUB
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id]
+              properties:
+                order_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Stubbed payment intent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [not_implemented] }
+                  checkout_url: { type: string, nullable: true }
+                  message: { type: string }
+              example:
+                status: not_implemented
+                checkout_url: null
+                message: v1 is cash only. Collect payment on handover.
+
+components:
+  securitySchemes:
+    supabaseJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase access token. Obtained client-side via the Supabase SDK; this API never issues one.
+
+  parameters:
+    ShopId:
+      name: shopId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PerPage:
+      name: per_page
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Lat:
+      name: lat
+      in: query
+      description: Latitude of the search origin. Required together with `lng` for distance sorting.
+      schema: { type: number, format: double, example: -26.2380 }
+    Lng:
+      name: lng
+      in: query
+      schema: { type: number, format: double, example: 27.9083 }
+    RadiusM:
+      name: radius_m
+      in: query
+      description: Search radius in metres. Capped at 10000.
+      schema: { type: integer, minimum: 100, maximum: 10000, default: 2000 }
+
+  responses:
+    BadRequest:
+      description: Malformed request. `error.code` is `VALIDATION_FAILED`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Missing, malformed or expired token. `error.code` is `UNAUTHENTICATED` or `TOKEN_EXPIRED`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: Authenticated but not permitted. `error.code` is `FORBIDDEN`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: No such resource.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    # ---- Errors -----------------------------------------------------------
+    ErrorDetail:
+      type: object
+      properties:
+        field: { type: string }
+        issue: { type: string }
+        code: { type: string }
+        message: { type: string }
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                Stable machine-readable code. Switch on this, never on `message`.
+              enum:
+                - VALIDATION_FAILED
+                - UNAUTHENTICATED
+                - TOKEN_EXPIRED
+                - FORBIDDEN
+                - NOT_FOUND
+                - PRODUCT_NOT_FOUND
+                - ALREADY_STOCKED
+                - STALE_WRITE
+                - INSUFFICIENT_STOCK
+                - TOTALS_MISMATCH
+                - DUPLICATE_SALE
+                - LICENCE_NOT_VERIFIED
+                - SHOP_NOT_ACCEPTING_ORDERS
+                - QUOTE_EXPIRED
+                - SHOPS_TOO_FAR_APART
+                - OUTSIDE_SERVICE_AREA
+                - ORDER_NOT_CANCELLABLE
+                - RATE_LIMITED
+                - NOT_IMPLEMENTED
+                - INTERNAL_ERROR
+            message: { type: string }
+            details:
+              type: array
+              items: { $ref: "#/components/schemas/ErrorDetail" }
+            request_id:
+              type: string
+              description: Include this when reporting a bug — it finds the log line.
+
+    Paginated:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { type: array, items: {} }
+        meta:
+          type: object
+          required: [page, per_page, total, total_pages]
+          properties:
+            page: { type: integer }
+            per_page: { type: integer }
+            total: { type: integer }
+            total_pages: { type: integer }
+
+    # ---- Enums ------------------------------------------------------------
+    UserRole:
+      type: string
+      enum: [customer, shop_owner, shop_staff, courier, admin]
+    LicenceStatus:
+      type: string
+      enum: [none, pending, verified, rejected, expired]
+    ShopMode:
+      type: string
+      enum: [advertising_only, inventory_only, full]
+    PaymentMethod:
+      type: string
+      enum: [cash, card, qr, account]
+    OrderStatus:
+      type: string
+      enum: [pending_payment, placed, accepted, partially_accepted, preparing, ready, dispatched, completed, cancelled, rejected]
+    OrderShopStatus:
+      type: string
+      enum: [pending, accepted, rejected, preparing, ready, collected, cancelled]
+    CourierMode:
+      type: string
+      enum: [foot, bicycle, vehicle]
+      description: "`foot` and `bicycle` are capped at ~2 km; `vehicle` covers the full radius."
+    DeliveryStatus:
+      type: string
+      enum: [unassigned, assigned, en_route_pickup, collected, en_route_dropoff, delivered, failed]
+    FulfilmentType:
+      type: string
+      enum: [delivery, collection]
+
+    # ---- Profile ----------------------------------------------------------
+    Profile:
+      type: object
+      required: [id, role, full_name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/UserRole" }
+        full_name: { type: string }
+        phone: { type: string, nullable: true }
+        avatar_url: { type: string, nullable: true }
+        home_address: { type: string, nullable: true }
+        home_lat: { type: number, format: double, nullable: true }
+        home_lng: { type: number, format: double, nullable: true }
+        shop_ids:
+          type: array
+          description: Shops this user owns or works at. Empty for customers.
+          items: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+      example:
+        id: 11111111-0000-4000-8000-000000000001
+        role: shop_owner
+        full_name: Thoko Ndlovu
+        phone: "+27821234567"
+        avatar_url: null
+        home_address: 1423 Vilakazi St, Orlando West
+        home_lat: -26.2380
+        home_lng: 27.9083
+        shop_ids: [7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa]
+        created_at: "2026-08-01T08:00:00Z"
+
+    # ---- Shops ------------------------------------------------------------
+    ShopSummary:
+      type: object
+      required: [id, name, slug, address_line, lat, lng, mode, accepts_orders]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        logo_url: { type: string, nullable: true }
+        address_line: { type: string }
+        township: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        distance_m:
+          type: integer
+          nullable: true
+          description: Present only when the request supplied `lat`/`lng`.
+        mode: { $ref: "#/components/schemas/ShopMode" }
+        accepts_orders: { type: boolean }
+        accepts_delivery: { type: boolean }
+        is_open_now: { type: boolean }
+
+    Shop:
+      allOf:
+        - $ref: "#/components/schemas/ShopSummary"
+        - type: object
+          properties:
+            owner_id: { type: string, format: uuid }
+            description: { type: string, nullable: true }
+            phone: { type: string, nullable: true }
+            province: { type: string, nullable: true }
+            trading_licence_no: { type: string, nullable: true }
+            licence_status: { $ref: "#/components/schemas/LicenceStatus" }
+            licence_expires_at: { type: string, format: date, nullable: true }
+            opens_at: { type: string, nullable: true, example: "07:00" }
+            closes_at: { type: string, nullable: true, example: "20:00" }
+            is_active: { type: boolean }
+            product_count: { type: integer }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    CreateShopRequest:
+      type: object
+      required: [name, address_line, lat, lng]
+      properties:
+        name: { type: string, maxLength: 120, example: Mama Thoko's Tuckshop }
+        description: { type: string }
+        phone: { type: string, example: "+27821234567" }
+        address_line: { type: string, example: 1423 Vilakazi St }
+        township: { type: string, example: Orlando West }
+        city: { type: string, example: Soweto }
+        province: { type: string, example: Gauteng }
+        lat: { type: number, format: double, example: -26.2380 }
+        lng: { type: number, format: double, example: 27.9083 }
+        opens_at: { type: string, example: "07:00" }
+        closes_at: { type: string, example: "20:00" }
+
+    UpdateShopRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        phone: { type: string }
+        logo_url: { type: string, format: uri }
+        address_line: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        opens_at: { type: string }
+        closes_at: { type: string }
+        mode: { $ref: "#/components/schemas/ShopMode" }
+        accepts_orders:
+          type: boolean
+          description: Rejected with `LICENCE_NOT_VERIFIED` unless the trading licence is verified.
+        accepts_delivery: { type: boolean }
+        is_active: { type: boolean }
+
+    # ---- Catalog ----------------------------------------------------------
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+
+    Product:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        barcode:
+          type: string
+          nullable: true
+          description: Null means a shop-local item, excluded from price comparison.
+        name: { type: string }
+        brand: { type: string, nullable: true }
+        unit_size: { type: string, nullable: true }
+        image_url: { type: string, nullable: true }
+        category: { $ref: "#/components/schemas/Category" }
+        created_by_shop_id: { type: string, format: uuid, nullable: true }
+        is_verified: { type: boolean }
+        updated_at: { type: string, format: date-time }
+
+    PriceStats:
+      type: object
+      properties:
+        offer_count: { type: integer }
+        avg_price_cents: { type: integer, format: int64 }
+        min_price_cents: { type: integer, format: int64 }
+        max_price_cents: { type: integer, format: int64 }
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - type: object
+          properties:
+            price_stats: { $ref: "#/components/schemas/PriceStats" }
+
+    CreateProductRequest:
+      type: object
+      required: [name]
+      properties:
+        barcode:
+          type: string
+          description: Omit for a shop-local item. If it already exists you get `200` with the existing product.
+        name: { type: string, maxLength: 160 }
+        brand: { type: string }
+        unit_size: { type: string }
+        category_id: { type: string, format: uuid }
+        image_url: { type: string, format: uri }
+        shop_id:
+          type: string
+          format: uuid
+          description: Required when `barcode` is omitted.
+
+    ProductOffer:
+      type: object
+      properties:
+        shop_id: { type: string, format: uuid }
+        shop_name: { type: string }
+        distance_m: { type: integer, nullable: true }
+        price_cents: { type: integer, format: int64 }
+        stock_qty: { type: integer }
+        accepts_orders: { type: boolean }
+
+    ProductSearchResult:
+      type: object
+      properties:
+        product: { $ref: "#/components/schemas/Product" }
+        price_stats: { $ref: "#/components/schemas/PriceStats" }
+        offers:
+          type: array
+          items: { $ref: "#/components/schemas/ProductOffer" }
+
+    BarcodeLookupResult:
+      type: object
+      required: [product]
+      properties:
+        product: { $ref: "#/components/schemas/Product" }
+        shop_product:
+          type: object
+          nullable: true
+          description: Present only when `shop_id` was supplied and the shop stocks it.
+          allOf:
+            - $ref: "#/components/schemas/InventoryItemCore"
+
+    # ---- Inventory --------------------------------------------------------
+    InventoryItemCore:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        price_cents: { type: integer, format: int64 }
+        stock_qty: { type: integer }
+        low_stock_threshold: { type: integer }
+        is_available: { type: boolean }
+
+    InventoryItem:
+      allOf:
+        - $ref: "#/components/schemas/InventoryItemCore"
+        - type: object
+          properties:
+            shop_id: { type: string, format: uuid }
+            product: { $ref: "#/components/schemas/Product" }
+            cost_cents:
+              type: integer
+              format: int64
+              nullable: true
+              description: Shop staff only. Omitted from any customer-facing response.
+            is_low_stock: { type: boolean }
+            client_updated_at: { type: string, format: date-time, nullable: true }
+            updated_at: { type: string, format: date-time }
+
+    # ---- Sales ------------------------------------------------------------
+    SaleItemInput:
+      type: object
+      required: [product_id, qty, unit_price_cents]
+      properties:
+        product_id: { type: string, format: uuid }
+        qty: { type: integer, minimum: 1 }
+        unit_price_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            The price actually charged at the till. Sent by the client because
+            an offline till may have been using an older price — the receipt
+            must match what the customer paid, not what the catalog says now.
+
+    CreateSaleRequest:
+      type: object
+      required: [client_sale_id, sold_at, subtotal_cents, total_cents, items]
+      properties:
+        client_sale_id:
+          type: string
+          format: uuid
+          description: Generated on the device. The idempotency key. Never reuse, never regenerate on retry.
+        sold_at: { type: string, format: date-time, description: Client clock. }
+        payment_method: { $ref: "#/components/schemas/PaymentMethod" }
+        subtotal_cents: { type: integer, format: int64, minimum: 0 }
+        discount_cents: { type: integer, format: int64, minimum: 0, default: 0 }
+        total_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Must equal `subtotal_cents - discount_cents`, else `TOTALS_MISMATCH`.
+        amount_tendered_cents: { type: integer, format: int64, minimum: 0 }
+        change_cents: { type: integer, format: int64, minimum: 0 }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SaleItemInput" }
+
+    SaleItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        product_name:
+          type: string
+          description: Snapshot at time of sale. A later catalog rename must not change an old receipt.
+        qty: { type: integer }
+        unit_price_cents: { type: integer, format: int64 }
+        line_total_cents: { type: integer, format: int64 }
+
+    Sale:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        shop_id: { type: string, format: uuid }
+        client_sale_id: { type: string, format: uuid }
+        cashier_id: { type: string, format: uuid, nullable: true }
+        cashier_name: { type: string, nullable: true }
+        status: { type: string, enum: [completed, voided] }
+        subtotal_cents: { type: integer, format: int64 }
+        discount_cents: { type: integer, format: int64 }
+        total_cents: { type: integer, format: int64 }
+        amount_tendered_cents: { type: integer, format: int64, nullable: true }
+        change_cents: { type: integer, format: int64, nullable: true }
+        payment_method: { $ref: "#/components/schemas/PaymentMethod" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SaleItem" }
+        sold_at: { type: string, format: date-time }
+        synced_at: { type: string, format: date-time }
+      example:
+        id: 9c8b7a60-0000-4000-8000-000000000001
+        shop_id: 7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa
+        client_sale_id: 11111111-1111-4111-8111-111111111111
+        cashier_id: 11111111-0000-4000-8000-000000000001
+        cashier_name: Thoko Ndlovu
+        status: completed
+        subtotal_cents: 3450
+        discount_cents: 0
+        total_cents: 3450
+        amount_tendered_cents: 5000
+        change_cents: 1550
+        payment_method: cash
+        items:
+          - id: aa000000-0000-4000-8000-000000000001
+            product_id: 3f0a9d10-aaaa-4c11-9999-111111111111
+            product_name: Iwisa Super Maize Meal
+            qty: 1
+            unit_price_cents: 2000
+            line_total_cents: 2000
+          - id: aa000000-0000-4000-8000-000000000002
+            product_id: 3f0a9d10-bbbb-4c11-9999-222222222222
+            product_name: Sunlight Bar Soap 250g
+            qty: 2
+            unit_price_cents: 725
+            line_total_cents: 1450
+        sold_at: "2026-08-21T14:32:11Z"
+        synced_at: "2026-08-22T09:14:02Z"
+
+    BatchSaleResponse:
+      type: object
+      required: [server_time, summary, results]
+      properties:
+        server_time: { type: string, format: date-time }
+        summary:
+          type: object
+          properties:
+            created: { type: integer }
+            duplicate: { type: integer }
+            failed: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            required: [client_sale_id, status]
+            properties:
+              client_sale_id: { type: string, format: uuid }
+              status:
+                type: string
+                enum: [created, duplicate, failed]
+                description: "`duplicate` is a SUCCESS. Clear it from the device queue."
+              sale_id: { type: string, format: uuid, nullable: true }
+              error: { $ref: "#/components/schemas/ErrorDetail" }
+
+    # ---- Orders -----------------------------------------------------------
+    OrderItemInput:
+      type: object
+      required: [shop_id, product_id, qty]
+      properties:
+        shop_id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        qty: { type: integer, minimum: 1 }
+
+    QuoteRequest:
+      type: object
+      required: [fulfilment_type, items]
+      properties:
+        fulfilment_type: { $ref: "#/components/schemas/FulfilmentType" }
+        dropoff_lat: { type: number, format: double }
+        dropoff_lng: { type: number, format: double }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/OrderItemInput" }
+
+    QuoteLeg:
+      type: object
+      properties:
+        shop_id: { type: string, format: uuid }
+        shop_name: { type: string }
+        distance_m: { type: integer }
+        subtotal_cents: { type: integer, format: int64 }
+        all_items_available: { type: boolean }
+        unavailable_items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: { type: string, format: uuid }
+              name: { type: string }
+              requested_qty: { type: integer }
+              available_qty: { type: integer }
+
+    Quote:
+      type: object
+      required: [quote_id, expires_at, subtotal_cents, service_fee_cents, total_cents, legs]
+      properties:
+        quote_id: { type: string, description: Pass to `POST /orders`. Valid 15 minutes. }
+        expires_at: { type: string, format: date-time }
+        fulfilment_type: { $ref: "#/components/schemas/FulfilmentType" }
+        subtotal_cents: { type: integer, format: int64 }
+        service_fee_cents: { type: integer, format: int64 }
+        delivery_fee_cents: { type: integer, format: int64 }
+        total_cents: { type: integer, format: int64 }
+        shop_count: { type: integer }
+        max_distance_m: { type: integer }
+        fee_breakdown:
+          type: array
+          description: Show this to the customer verbatim. An unexplained fee is the fastest way to lose a township customer.
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              amount_cents: { type: integer, format: int64 }
+        legs:
+          type: array
+          items: { $ref: "#/components/schemas/QuoteLeg" }
+
+    CreateOrderRequest:
+      type: object
+      required: [quote_id]
+      properties:
+        quote_id: { type: string }
+        dropoff_address: { type: string }
+        dropoff_notes: { type: string, example: "Blue gate, next to the tuckshop" }
+        customer_phone: { type: string }
+
+    OrderItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        product_name: { type: string }
+        qty: { type: integer }
+        fulfilled_qty: { type: integer, nullable: true }
+        unit_price_cents: { type: integer, format: int64 }
+        line_total_cents: { type: integer, format: int64 }
+
+    OrderLeg:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        shop_id: { type: string, format: uuid }
+        shop_name: { type: string }
+        shop_phone: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/OrderShopStatus" }
+        distance_m: { type: integer, nullable: true }
+        subtotal_cents: { type: integer, format: int64 }
+        rejected_reason: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+
+    Order:
+      type: object
+      required: [id, order_number, status, fulfilment_type, total_cents, legs]
+      properties:
+        id: { type: string, format: uuid }
+        order_number: { type: string, example: SK-8F3K2P }
+        customer_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        fulfilment_type: { $ref: "#/components/schemas/FulfilmentType" }
+        dropoff_address: { type: string, nullable: true }
+        dropoff_notes: { type: string, nullable: true }
+        subtotal_cents: { type: integer, format: int64 }
+        service_fee_cents: { type: integer, format: int64 }
+        delivery_fee_cents: { type: integer, format: int64 }
+        total_cents: { type: integer, format: int64 }
+        legs:
+          type: array
+          items: { $ref: "#/components/schemas/OrderLeg" }
+        delivery:
+          type: object
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/CustomerDelivery" }]
+        placed_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+      example:
+        id: 88888888-8888-4888-8888-888888888888
+        order_number: SK-8F3K2P
+        customer_id: 22222222-0000-4000-8000-000000000002
+        status: partially_accepted
+        fulfilment_type: delivery
+        dropoff_address: 77 Mooki St, Orlando East
+        dropoff_notes: Blue gate, next to the tuckshop
+        subtotal_cents: 17450
+        service_fee_cents: 1800
+        delivery_fee_cents: 0
+        total_cents: 19250
+        legs:
+          - id: 55555555-0000-4000-8000-000000000001
+            shop_id: 7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa
+            shop_name: Mama Thoko's Tuckshop
+            shop_phone: "+27821234567"
+            status: accepted
+            distance_m: 480
+            subtotal_cents: 8500
+            rejected_reason: null
+            items:
+              - id: 66666666-0000-4000-8000-000000000001
+                product_id: 3f0a9d10-aaaa-4c11-9999-111111111111
+                product_name: Iwisa Super Maize Meal
+                qty: 1
+                fulfilled_qty: 1
+                unit_price_cents: 8500
+                line_total_cents: 8500
+          - id: 55555555-0000-4000-8000-000000000002
+            shop_id: 7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb
+            shop_name: Bra Sipho Spaza
+            shop_phone: null
+            status: rejected
+            distance_m: 1620
+            subtotal_cents: 8950
+            rejected_reason: out_of_stock
+            items: []
+        delivery: null
+        placed_at: "2026-08-22T09:15:00Z"
+        completed_at: null
+
+    ShopOrderLeg:
+      type: object
+      description: A shop's own view of one order leg. Carries only what that shop needs.
+      properties:
+        id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        order_number: { type: string }
+        status: { $ref: "#/components/schemas/OrderShopStatus" }
+        fulfilment_type: { $ref: "#/components/schemas/FulfilmentType" }
+        customer_first_name:
+          type: string
+          description: First name only. A shop does not need the customer's full identity to pack a bag.
+        subtotal_cents: { type: integer, format: int64 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+        placed_at: { type: string, format: date-time }
+
+    # ---- Delivery ---------------------------------------------------------
+    CustomerDelivery:
+      type: object
+      description: |
+        The ONLY delivery shape a customer app may render. Contains no
+        coordinates, no route, no courier contact details. See § Route privacy.
+      required: [id, order_id, status]
+      properties:
+        id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/DeliveryStatus" }
+        mode:
+          type: string
+          nullable: true
+          enum: [foot, bicycle, vehicle]
+        eta_band:
+          type: string
+          nullable: true
+          enum: ["under-10min", "10-20min", "20-40min", "over-40min", null]
+          description: Deliberately coarse. A precise ETA is a precise location.
+        courier:
+          type: object
+          nullable: true
+          description: Populated only from `collected` onward, and only ever first name plus initial.
+          properties:
+            display_name: { type: string, example: "Thabo M." }
+            mode: { $ref: "#/components/schemas/CourierMode" }
+            rating_avg: { type: number, format: float, nullable: true }
+        updated_at: { type: string, format: date-time }
+
+    CourierDelivery:
+      type: object
+      description: Courier-app and admin view. Contains pickup addresses and sequencing. Never return this to a customer.
+      properties:
+        id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        order_number: { type: string }
+        status: { $ref: "#/components/schemas/DeliveryStatus" }
+        mode: { $ref: "#/components/schemas/CourierMode" }
+        payout_cents: { type: integer, format: int64 }
+        cash_to_collect_cents: { type: integer, format: int64 }
+        pickups:
+          type: array
+          items:
+            type: object
+            properties:
+              sequence: { type: integer }
+              shop_id: { type: string, format: uuid }
+              shop_name: { type: string }
+              address_line: { type: string }
+              lat: { type: number, format: double }
+              lng: { type: number, format: double }
+              phone: { type: string, nullable: true }
+              collected: { type: boolean }
+              item_count: { type: integer }
+        dropoff:
+          type: object
+          properties:
+            address_line: { type: string }
+            notes: { type: string, nullable: true }
+            lat: { type: number, format: double }
+            lng: { type: number, format: double }
+            customer_first_name: { type: string }
+            customer_phone: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
+
+    CourierJob:
+      type: object
+      properties:
+        delivery_id: { type: string, format: uuid }
+        order_number: { type: string }
+        pickup_count: { type: integer }
+        total_distance_m: { type: integer }
+        payout_cents: { type: integer, format: int64 }
+        mode: { $ref: "#/components/schemas/CourierMode" }
+        expires_at: { type: string, format: date-time }
+
+    # ---- Flyers -----------------------------------------------------------
+    Flyer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        shop_id: { type: string, format: uuid }
+        title: { type: string }
+        image_url: { type: string, format: uri }
+        starts_at: { type: string, format: date }
+        ends_at: { type: string, format: date }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    # ---- AI ---------------------------------------------------------------
+    DishBasket:
+      type: object
+      properties:
+        dish: { type: string }
+        servings: { type: integer }
+        estimated_total_cents: { type: integer, format: int64 }
+        ingredients:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              quantity: { type: string }
+              matched_product:
+                type: object
+                nullable: true
+                allOf: [{ $ref: "#/components/schemas/Product" }]
+              best_offer:
+                type: object
+                nullable: true
+                allOf: [{ $ref: "#/components/schemas/ProductOffer" }]

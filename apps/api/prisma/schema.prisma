@@ -1,14 +1,545 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// SmartKasi — Prisma schema
+//
+// Mirrors db/schema.sql, which stays the source of truth because it also
+// carries the triggers, the RLS policies and the stock-ledger machinery that
+// Prisma cannot express. Regenerate this file with:
+//
+//   npx prisma db pull      (after applying db/schema.sql)
+//
+// Coordinates are plain Float lat/lng, not PostGIS geography — Prisma cannot
+// read a `geography` column at all. See the header of db/schema.sql for the
+// tradeoff this buys and what it costs.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
-  moduleFormat    = "cjs"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  // Prisma 7 emits `.ts` extensions in its relative imports by default, which
+  // tsc leaves verbatim under moduleResolution "nodenext" — the built app then
+  // dies at require('./internal/class.ts'). Extensionless keeps CJS resolution
+  // working without having to turn on rewriteRelativeImportExtensions.
+  importFileExtension = ""
 }
 
 datasource db {
   provider = "postgresql"
+  // No url/directUrl here on purpose. prisma.config.ts supplies the connection
+  // (DIRECT_URL when set, else DATABASE_URL) so there is exactly one place to
+  // look. If Supabase's dashboard snippet tempts you to add
+  // `url = env("DATABASE_URL")` here, don't — two sources that can disagree is
+  // the worst possible way to debug a connection problem.
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  customer
+  shop_owner
+  shop_staff
+  courier
+  admin
+
+  @@map("user_role")
+}
+
+enum LicenceStatus {
+  none
+  pending
+  verified
+  rejected
+  expired
+
+  @@map("licence_status")
+}
+
+enum ShopMode {
+  advertising_only
+  inventory_only
+  full
+
+  @@map("shop_mode")
+}
+
+enum PaymentMethod {
+  cash
+  card
+  qr
+  account
+
+  @@map("payment_method")
+}
+
+enum SaleStatus {
+  completed
+  voided
+
+  @@map("sale_status")
+}
+
+enum StockReason {
+  sale
+  restock
+  adjustment
+  order
+  void
+  shrinkage
+
+  @@map("stock_reason")
+}
+
+enum FulfilmentType {
+  delivery
+  collection
+
+  @@map("fulfilment_type")
+}
+
+enum OrderStatus {
+  pending_payment
+  placed
+  accepted
+  partially_accepted
+  preparing
+  ready
+  dispatched
+  completed
+  cancelled
+  rejected
+
+  @@map("order_status")
+}
+
+enum OrderShopStatus {
+  pending
+  accepted
+  rejected
+  preparing
+  ready
+  collected
+  cancelled
+
+  @@map("order_shop_status")
+}
+
+enum CourierMode {
+  foot
+  bicycle
+  vehicle
+
+  @@map("courier_mode")
+}
+
+enum DeliveryStatus {
+  unassigned
+  assigned
+  en_route_pickup
+  collected
+  en_route_dropoff
+  delivered
+  failed
+
+  @@map("delivery_status")
+}
+
+// ============================================================================
+// IDENTITY
+// `id` references auth.users(id) in SQL. Supabase owns that table, so it is
+// deliberately not modelled here — the FK is enforced by the database.
+// ============================================================================
+
+model Profile {
+  id          String   @id @db.Uuid
+  role        UserRole @default(customer)
+  fullName    String   @map("full_name")
+  phone       String?
+  avatarUrl   String?  @map("avatar_url")
+  homeLat     Float?   @map("home_lat")
+  homeLng     Float?   @map("home_lng")
+  homeAddress String?  @map("home_address")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  shops          Shop[]
+  staffAt        ShopStaff[]
+  sales          Sale[]
+  orders         Order[]
+  stockMovements StockMovement[]
+  courier        Courier?
+
+  @@index([role])
+  @@map("profiles")
+}
+
+// ============================================================================
+// SHOPS
+// ============================================================================
+
+model Shop {
+  id          String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  ownerId     String  @map("owner_id") @db.Uuid
+  name        String
+  slug        String  @unique
+  description String?
+  phone       String?
+  logoUrl     String? @map("logo_url")
+
+  lat         Float
+  lng         Float
+  addressLine String  @map("address_line")
+  township    String?
+  city        String?
+  province    String?
+
+  tradingLicenceNo String?       @map("trading_licence_no")
+  licenceStatus    LicenceStatus @default(none) @map("licence_status")
+  licenceDocUrl    String?       @map("licence_doc_url")
+  licenceExpiresAt DateTime?     @map("licence_expires_at") @db.Date
+
+  mode            ShopMode  @default(advertising_only)
+  acceptsOrders   Boolean   @default(false) @map("accepts_orders")
+  acceptsDelivery Boolean   @default(false) @map("accepts_delivery")
+  isActive        Boolean   @default(true) @map("is_active")
+  opensAt         DateTime? @map("opens_at") @db.Time(6)
+  closesAt        DateTime? @map("closes_at") @db.Time(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  owner            Profile         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  staff            ShopStaff[]
+  shopProducts     ShopProduct[]
+  createdProducts  Product[]
+  stockMovements   StockMovement[]
+  sales            Sale[]
+  orderShops       OrderShop[]
+  flyers           Flyer[]
+
+  @@index([lat, lng])
+  @@index([ownerId])
+  @@index([isActive, acceptsOrders])
+  @@map("shops")
+}
+
+model ShopStaff {
+  shopId             String   @map("shop_id") @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  canManageInventory Boolean  @default(false) @map("can_manage_inventory")
+  canVoidSales       Boolean  @default(false) @map("can_void_sales")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shop Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([shopId, userId])
+  @@map("shop_staff")
+}
+
+// ============================================================================
+// CATALOG
+// One GLOBAL products table keyed on barcode — see docs/ERD.md § decision 1.
+// ============================================================================
+
+model Category {
+  id       String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name     String  @unique
+  parentId String? @map("parent_id") @db.Uuid
+  icon     String?
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  /// null => shop-local item, excluded from cross-shop price comparison
+  barcode         String?  @unique
+  name            String
+  brand           String?
+  unitSize        String?  @map("unit_size")
+  categoryId      String?  @map("category_id") @db.Uuid
+  imageUrl        String?  @map("image_url")
+  createdByShopId String?  @map("created_by_shop_id") @db.Uuid
+  isVerified      Boolean  @default(false) @map("is_verified")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdByShop  Shop?           @relation(fields: [createdByShopId], references: [id], onDelete: SetNull)
+  shopProducts   ShopProduct[]
+  saleItems      SaleItem[]
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
+
+  @@index([barcode])
+  @@index([categoryId])
+  @@map("products")
+}
+
+// ============================================================================
+// INVENTORY
+// ============================================================================
+
+model ShopProduct {
+  id                String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shopId            String @map("shop_id") @db.Uuid
+  productId         String @map("product_id") @db.Uuid
+
+  priceCents        BigInt @map("price_cents")
+  /// Never exposed on a customer-facing response.
+  costCents         BigInt? @map("cost_cents")
+  /// Cached projection of stock_movements, maintained by a DB trigger.
+  stockQty          Int    @default(0) @map("stock_qty")
+  lowStockThreshold Int    @default(5) @map("low_stock_threshold")
+  isAvailable       Boolean @default(true) @map("is_available")
+
+  /// Last-write-wins key for offline inventory edits.
+  clientUpdatedAt DateTime? @map("client_updated_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shop    Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([shopId, productId])
+  @@index([shopId])
+  @@index([productId])
+  @@index([shopId, updatedAt])
+  @@map("shop_products")
+}
+
+/// Append-only. Never UPDATE, never DELETE — see docs/ERD.md § decision 2.
+model StockMovement {
+  id         String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shopId     String      @map("shop_id") @db.Uuid
+  productId  String      @map("product_id") @db.Uuid
+  delta      Int
+  reason     StockReason
+  refType    String?     @map("ref_type")
+  refId      String?     @map("ref_id") @db.Uuid
+  actorId    String?     @map("actor_id") @db.Uuid
+  note       String?
+  /// Client clock — when it happened at the till.
+  occurredAt DateTime    @map("occurred_at") @db.Timestamptz(6)
+  /// Server clock — when we heard about it.
+  recordedAt DateTime    @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  shop    Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  product Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  actor   Profile? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([shopId, occurredAt])
+  @@index([refType, refId])
+  @@map("stock_movements")
+}
+
+// ============================================================================
+// POS / SALES
+// ============================================================================
+
+model Sale {
+  id           String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shopId       String @map("shop_id") @db.Uuid
+  /// Device-generated. THE idempotency key.
+  clientSaleId String @map("client_sale_id") @db.Uuid
+  cashierId    String? @map("cashier_id") @db.Uuid
+
+  subtotalCents       BigInt        @map("subtotal_cents")
+  discountCents       BigInt        @default(0) @map("discount_cents")
+  totalCents          BigInt        @map("total_cents")
+  amountTenderedCents BigInt?       @map("amount_tendered_cents")
+  changeCents         BigInt?       @map("change_cents")
+  paymentMethod       PaymentMethod @default(cash) @map("payment_method")
+  status              SaleStatus    @default(completed)
+
+  soldAt    DateTime @map("sold_at") @db.Timestamptz(6)
+  syncedAt  DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shop    Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cashier Profile?   @relation(fields: [cashierId], references: [id], onDelete: SetNull)
+  items   SaleItem[]
+
+  @@unique([shopId, clientSaleId])
+  @@index([shopId, soldAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  saleId    String @map("sale_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  /// Snapshot at time of sale — a later catalog rename must not change an old receipt.
+  productName    String @map("product_name")
+  qty            Int
+  unitPriceCents BigInt @map("unit_price_cents")
+  lineTotalCents BigInt @map("line_total_cents")
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+// ============================================================================
+// MARKETPLACE ORDERS
+// ============================================================================
+
+model Order {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  orderNumber String      @unique @map("order_number")
+  customerId  String      @map("customer_id") @db.Uuid
+  status      OrderStatus @default(placed)
+  fulfilmentType FulfilmentType @map("fulfilment_type")
+
+  dropoffLat     Float?  @map("dropoff_lat")
+  dropoffLng     Float?  @map("dropoff_lng")
+  dropoffAddress String? @map("dropoff_address")
+  dropoffNotes   String? @map("dropoff_notes")
+
+  subtotalCents    BigInt @default(0) @map("subtotal_cents")
+  serviceFeeCents  BigInt @default(0) @map("service_fee_cents")
+  deliveryFeeCents BigInt @default(0) @map("delivery_fee_cents")
+  totalCents       BigInt @default(0) @map("total_cents")
+
+  quoteShopCount  Int? @map("quote_shop_count")
+  quoteMaxRadiusM Int? @map("quote_max_radius_m")
+
+  placedAt           DateTime  @default(now()) @map("placed_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  cancelledAt        DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancellationReason String?   @map("cancellation_reason")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  customer Profile     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  legs     OrderShop[]
+  delivery Delivery?
+
+  @@index([customerId, placedAt])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderShop {
+  id             String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  orderId        String          @map("order_id") @db.Uuid
+  shopId         String          @map("shop_id") @db.Uuid
+  status         OrderShopStatus @default(pending)
+  subtotalCents  BigInt          @default(0) @map("subtotal_cents")
+  distanceM      Int?            @map("distance_m")
+  rejectedReason String?         @map("rejected_reason")
+  acceptedAt     DateTime?       @map("accepted_at") @db.Timestamptz(6)
+  readyAt        DateTime?       @map("ready_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  order Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shop  Shop        @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  items OrderItem[]
+
+  @@unique([orderId, shopId])
+  @@index([shopId, status])
+  @@map("order_shops")
+}
+
+model OrderItem {
+  id             String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  orderShopId    String @map("order_shop_id") @db.Uuid
+  productId      String @map("product_id") @db.Uuid
+  productName    String @map("product_name")
+  qty            Int
+  unitPriceCents BigInt @map("unit_price_cents")
+  lineTotalCents BigInt @map("line_total_cents")
+  /// Set when a shop short-ships rather than rejecting the whole leg.
+  fulfilledQty   Int?   @map("fulfilled_qty")
+
+  orderShop OrderShop @relation(fields: [orderShopId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderShopId])
+  @@map("order_items")
+}
+
+// ============================================================================
+// FLYERS — the advertising_only onboarding path
+// ============================================================================
+
+model Flyer {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shopId    String   @map("shop_id") @db.Uuid
+  title     String
+  imageUrl  String   @map("image_url")
+  startsAt  DateTime @map("starts_at") @db.Date
+  endsAt    DateTime @map("ends_at") @db.Date
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@index([isActive, startsAt, endsAt])
+  @@map("flyers")
+}
+
+// ============================================================================
+// DELIVERY — v2. Tables exist so the contract is stable; endpoints are STUB.
+// ============================================================================
+
+model Courier {
+  id          String      @id @db.Uuid
+  mode        CourierMode
+  maxRadiusM  Int         @default(2000) @map("max_radius_m")
+  isOnline    Boolean     @default(false) @map("is_online")
+  vehicleReg  String?     @map("vehicle_reg")
+  idDocUrl    String?     @map("id_doc_url")
+  isVerified  Boolean     @default(false) @map("is_verified")
+  ratingAvg   Decimal?    @map("rating_avg") @db.Decimal(2, 1)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile    Profile    @relation(fields: [id], references: [id], onDelete: Cascade)
+  deliveries Delivery[]
+
+  @@map("couriers")
+}
+
+model Delivery {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  orderId       String         @unique @map("order_id") @db.Uuid
+  courierId     String?        @map("courier_id") @db.Uuid
+  mode          CourierMode?
+  status        DeliveryStatus @default(unassigned)
+  payoutCents   BigInt         @default(0) @map("payout_cents")
+  assignedAt    DateTime?      @map("assigned_at") @db.Timestamptz(6)
+  collectedAt   DateTime?      @map("collected_at") @db.Timestamptz(6)
+  deliveredAt   DateTime?      @map("delivered_at") @db.Timestamptz(6)
+  proofPhotoUrl String?        @map("proof_photo_url")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order     Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  courier   Courier?           @relation(fields: [courierId], references: [id], onDelete: SetNull)
+  positions DeliveryPosition[]
+
+  @@index([courierId, status])
+  @@map("deliveries")
+}
+
+/// Internal only. NEVER returned on a customer-facing endpoint — a published
+/// courier route in a township is an armed-robbery vector.
+model DeliveryPosition {
+  id         BigInt   @id @default(autoincrement())
+  deliveryId String   @map("delivery_id") @db.Uuid
+  lat        Float
+  lng        Float
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, recordedAt])
+  @@map("delivery_positions")
 }
