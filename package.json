@@ -11,7 +11,14 @@
     "check-types": "turbo check-types",
     "lint": "turbo lint",
     "mock": "npx @stoplight/prism-cli mock packages/contract/openapi.yaml --port 4010 --host 0.0.0.0 --errors",
-    "contract:lint": "npx @redocly/cli lint packages/contract/openapi.yaml"
+    "contract:lint": "npx @redocly/cli lint packages/contract/openapi.yaml",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:reset": "npx supabase db reset",
+    "supabase:status": "npx supabase status",
+    "supabase:types": "npx supabase gen types typescript --local > packages/types/supabase.ts",
+    "supabase:migration:new": "npx supabase migration new",
+    "supabase:diff": "npx supabase db diff -f"
   },
   "devDependencies": {
     "turbo": "^2.10.11"
