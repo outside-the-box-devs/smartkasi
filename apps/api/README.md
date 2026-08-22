@@ -17,8 +17,14 @@ npm run prisma:generate
 npm run start:dev
 ```
 
-- API: `http://localhost:3000/v1`
-- Contract docs (Swagger UI, served from the real `openapi.yaml`): `http://localhost:3000/docs`
+- API: `http://localhost:3000/v1` — live: `https://api-production-5594.up.railway.app/v1`
+- Contract docs (Swagger UI, served from the real `openapi.yaml`): `/docs` — live: https://api-production-5594.up.railway.app/docs
+- Resolved spec as JSON for client codegen: `/docs-json`
+
+  `/docs` sits outside the `/v1` prefix and is public. It reads the contract off
+  disk at boot, so a change to `openapi.yaml` needs a restart to appear. Click
+  **Authorize** and paste a bare access token (no `Bearer `) to call protected
+  operations; the token survives page reloads.
 - Health: `http://localhost:3000/v1/health` — `"degraded"` means the DB is unreachable
 
 `db:schema`, `db:seed` and `db:sql` go through `scripts/sql.mjs` rather than `psql`,

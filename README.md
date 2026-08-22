@@ -15,6 +15,7 @@ orders, and (v2) courier delivery.
 | Building the backend | [`apps/api/README.md`](apps/api/README.md) and [`docs/ERD.md`](docs/ERD.md) |
 | Deciding what to cut tonight | [`docs/BUILD_ORDER.md`](docs/BUILD_ORDER.md) |
 | Testing a running API | [`docs/TESTING.md`](docs/TESTING.md) — or just `cd apps/api && npm run smoke:auth` |
+| Just wanting to click the API | [Swagger UI](https://api-production-5594.up.railway.app/docs) — live, Try-it-out enabled |
 
 ## Layout
 

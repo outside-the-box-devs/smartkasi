@@ -45,7 +45,19 @@ async function bootstrap(): Promise<void> {
   try {
     const specPath = join(process.cwd(), '..', '..', 'packages', 'contract', 'openapi.yaml');
     const spec = parseYaml(readFileSync(specPath, 'utf8')) as Record<string, unknown>;
-    SwaggerModule.setup('docs', app, spec as never, { customSiteTitle: 'SmartKasi API' });
+    SwaggerModule.setup('docs', app, spec as never, {
+      customSiteTitle: 'SmartKasi API',
+      swaggerOptions: {
+        // Keep the pasted token across page reloads. Without this every refresh
+        // silently drops it and the next Try-it-out returns 401, which reads
+        // like a broken endpoint rather than a cleared header.
+        persistAuthorization: true,
+        // Collapse the operation list; 40-odd endpoints expanded is unreadable.
+        docExpansion: 'list',
+        filter: true,
+        displayRequestDuration: true,
+      },
+    });
   } catch {
     Logger.warn('packages/contract/openapi.yaml not found — /docs disabled', 'Bootstrap');
   }

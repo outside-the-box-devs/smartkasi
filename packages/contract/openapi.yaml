@@ -124,12 +124,14 @@ info:
     name: Proprietary
 
 servers:
+  - url: https://api-production-5594.up.railway.app/v1
+    description: Live backend — use this one. Try it out works from this page.
   - url: http://localhost:3000/v1
     description: Local development
   - url: http://localhost:4010/v1
     description: Prism mock server (see mock/README.md) — use this until Sat 10:00
   - url: https://api.smartkasi.co.za/v1
-    description: Production (not provisioned yet)
+    description: Production domain — NOT provisioned. Do not point clients here yet.
 
 security:
   - supabaseJwt: []

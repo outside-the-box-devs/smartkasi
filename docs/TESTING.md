@@ -149,11 +149,37 @@ OWNER_TOKEN=... OWNER2_TOKEN=... CUSTOMER_TOKEN=... npm run smoke
 Swagger UI, driven by the real contract, with a Try-it-out button:
 
 ```
-http://localhost:3000/docs
+https://api-production-5594.up.railway.app/docs     live
+http://localhost:3000/docs                          local
 ```
 
-Click **Authorize**, paste a token, and every endpoint is callable from the
-browser. This is the fastest way to show someone the API works.
+The server dropdown defaults to the live Railway backend, so Try-it-out works
+from anyone's browser without running anything locally.
+
+To call an authenticated endpoint, click **Authorize**, paste a token, and every
+operation becomes callable from the page. Get a token by signing a demo user in:
+
+```bash
+curl -s "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" \
+  -d '{"email":"thoko@smartkasi.test","password":"Password123!"}'
+```
+
+Paste the `access_token` value only — no `Bearer ` prefix; Swagger adds it. The
+token is kept across page reloads (`persistAuthorization`), so a refresh does not
+silently drop it and hand you a 401 that looks like a broken endpoint. Tokens
+last an hour.
+
+`/docs` is deliberately **not** behind the `/v1` prefix, and it is public — it
+reads `packages/contract/openapi.yaml` off disk at boot, so a contract change
+needs a redeploy to show up.
+
+The resolved spec is served as JSON at `/docs-json`, which is what to point a
+client generator at:
+
+```bash
+npx openapi-typescript https://api-production-5594.up.railway.app/docs-json -o src/api.d.ts
+```
 
 Postman or Insomnia: import `packages/contract/openapi.yaml` directly. Both read
 OpenAPI 3.0 natively and build the whole collection with the examples filled in.
