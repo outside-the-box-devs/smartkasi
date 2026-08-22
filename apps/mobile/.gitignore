@@ -1,0 +1,6 @@
+# Local QA screenshots captured during emulator review.
+/*.png
+
+# Historical font artifacts; the apps now use Manrope.
+**/assets/fonts/InterVariable.ttf
+**/assets/fonts/INTER_LICENSE.txt
