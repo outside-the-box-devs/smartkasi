@@ -25,6 +25,8 @@ packages/contract/        openapi.yaml — the contract. Frozen; additive change
 db/schema.sql             Postgres/Supabase schema. Source of truth (triggers, RLS, constraints).
 db/seed.sql               3 Soweto shops, 12 real SA products, a week of POS sales, one live order.
 db/reset.sql              Empties the demo data so the seed can be re-applied. Destructive.
+supabase/migrations/      Mirrored copy of db/schema.sql for `supabase db reset` (see AGENTS.md).
+supabase/seed.sql         Mirrored copy of db/seed.sql for `supabase/config.toml:71` sql_paths.
 docs/                     API_CONTRACT, ERD, BUILD_ORDER.
 mock/                     Prism mock server so client work is never blocked on the backend.
 ```
