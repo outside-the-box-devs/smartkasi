@@ -2,7 +2,7 @@
   "name": "SmartKasi Admin — Township Commerce",
   "short_name": "SmartKasi",
   "description": "Offline POS, inventory via barcode, price comparison, map of spaza shops, license verification & flyers",
-  "start_url": "/admin/shops",
+  "start_url": "/dashboard/shops",
   "display": "standalone",
   "background_color": "#FDFBE4",
   "theme_color": "#0F766E",
