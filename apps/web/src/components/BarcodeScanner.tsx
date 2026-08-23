@@ -41,7 +41,7 @@ export default function BarcodeScanner({ onScan }: { onScan?: (barcode: string) 
       cancelled = true;
       try { scanner?.stop?.(); } catch {}
     };
-  }, [scanning]);
+  }, [scanning, onScan]);
 
   return (
     <VStack gap={3}>
