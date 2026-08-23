@@ -1,7 +1,7 @@
 // Minimal PWA service worker — SmartKasi offline
 // For full Workbox build, run next build --webpack with @ducanh2912/next-pwa
 const CACHE = 'smartkasi-v1';
-const URLS = ['/', '/admin/shops', '/manifest.json'];
+const URLS = ['/', '/dashboard', '/dashboard/shops', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(URLS)).then(() => self.skipWaiting()));
