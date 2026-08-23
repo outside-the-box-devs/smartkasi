@@ -21,8 +21,8 @@ self.addEventListener('fetch', (e) => {
           }
           return res;
         })
-        .catch(() => hit);
-      return hit || fetchPromise;
+        .catch(() => hit ?? Response.error());
+      return hit ?? fetchPromise;
     }),
   );
 });
