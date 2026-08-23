@@ -1,26 +1,34 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Colour mode is user-controlled via the theme toggle (providers.tsx).
+   The Astryx Theme component sets data-theme on <html>; reset.css maps it to
+   color-scheme so light-dark() tokens resolve for light, dark, and system. */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--color-background-body, #ffffff);
+  color: var(--color-text-primary, #0f172a);
+  font-family: var(--_theme-body-font, "Outfit"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Entrance animation for content appearing in place (cards, rows, panels).
+   Uses Astryx motion tokens; honours the OS reduce-motion setting. */
+@keyframes sk-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-2, 8px));
+  }
+}
+.sk-enter {
+  animation: sk-enter var(--duration-medium-min, 310ms) var(--ease-standard, ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk-enter {
+    animation: none;
+  }
 }
