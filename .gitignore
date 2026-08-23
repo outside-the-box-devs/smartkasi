@@ -63,3 +63,5 @@ _to_delete/
 
 # Editor/tooling backups (can contain secrets)
 *.bak
+.vercel
+.env*

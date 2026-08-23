@@ -1,14 +1,19 @@
 // SmartKasi — Prisma schema
 //
-// Mirrors db/schema.sql, which stays the source of truth because it also
-// carries the triggers, the RLS policies and the stock-ledger machinery that
-// Prisma cannot express. Regenerate this file with:
+// SOURCE OF TRUTH for all public.* tables, enums, and app-level constraints.
+// DB migrations live in apps/api/prisma/migrations/ (run via `prisma migrate`).
+// The full SQL — including triggers, RLS, stock-ledger, and views that Prisma
+// cannot express — lives in the initial migration's migration.sql, which is
+// the verbatim, reviewed copy of the former db/schema.sql. Keep them in sync
+// by editing schema.prisma + adding a new migration (never hand-edit
+// db/schema.sql alone). `db/schema.sql` is now a generated reference copy of
+// that migration for tooling that expects a single SQL file.
 //
-//   npx prisma db pull      (after applying db/schema.sql)
+// Supabase handles ONLY Supabase-managed schemas (auth, storage, realtime).
+// See supabase/migrations/20260822000001_storage.sql and AGENTS.md §1.
 //
 // Coordinates are plain Float lat/lng, not PostGIS geography — Prisma cannot
-// read a `geography` column at all. See the header of db/schema.sql for the
-// tradeoff this buys and what it costs.
+// read a `geography` column at all. See docs/ERD.md for the tradeoff.
 
 generator client {
   provider     = "prisma-client"

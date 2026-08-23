@@ -11,8 +11,8 @@ export class ShopsController {
 
   @Public()
   @Get()
-  list(@Query() query: ListShopsQuery) {
-    return this.service.list(query);
+  list(@CurrentUser() user: AuthUser | undefined, @Query() query: ListShopsQuery) {
+    return this.service.list(query, user);
   }
 
   @Post()
