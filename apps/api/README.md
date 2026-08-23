@@ -216,26 +216,41 @@ with `Number()` explicitly; the polyfill is the safety net.
 
 ## Migrations
 
-`db/schema.sql:1` is the source of truth — it carries the triggers (`db/schema.sql:443-490`), the RLS
-policies (`db/schema.sql:500-552`) and the check constraints that Prisma cannot express.
+`apps/api/prisma/schema.prisma:1` is the source of truth for `public.*` — 16 models, enums, indexes.
+The initial migration `prisma/migrations/20260822000001_init/migration.sql:1` (25872 bytes) is a
+verbatim copy of the former `db/schema.sql` and includes the triggers (`443-490`), RLS policies
+(`500-552`), views (`403-439`), and check constraints that Prisma cannot express. `db/schema.sql:1`
+is now a **generated reference copy** of that migration for tooling that expects a single SQL file.
 
-**Local Supabase path (2026-08-22 fix — see `AGENTS.md:1`):** `db/schema.sql` is mirrored verbatim to
-`supabase/migrations/20260821123132_init_smartkasi.sql:1` (25872 bytes) and `db/seed.sql` to `supabase/seed.sql:1`
-so `npx supabase db reset` (or `npm run supabase:reset` from the repo root) applies the same schema to the
-local Postgres at `supabase/config.toml:35` port `54322`. `supabase/config.toml:71` `sql_paths = ["./seed.sql"]`
-depends on that copy.
+**Supabase** owns **only** Supabase-managed schemas (`storage`, `auth`). Storage buckets live in
+`supabase/migrations/20260822000001_storage.sql:1` and are applied by `supabase db reset` to the
+local Postgres at `supabase/config.toml:35` port `54322`. `supabase/config.toml:66-71` has
+`[db.seed] enabled = false` — DB demo data is NOT seeded via `supabase/seed.sql` (which is now a
+1-line placeholder) to avoid the `shops_owner_id_fkey` FK violation that broke `supabase start`
+on 2026-08-22 (seed tried to INSERT shops before `profiles` existed; profiles are trigger-created
+from `auth.users`).
 
 The full workflow is:
 
 ```
-edit db/schema.sql  →  Copy-Item db/schema.sql supabase/migrations/<timestamp>_<name>.sql  →  npx supabase db reset  →  npx prisma db pull  →  npx prisma generate
+# A. DB change (Prisma)
+edit prisma/schema.prisma  →  npx prisma migrate dev --name add_<feature>  →  review migration.sql (paste raw SQL for triggers/RLS)  →  npx prisma generate
+# Optionally: Copy-Item prisma/migrations/<ts>_add_<feature>/migration.sql ../../db/schema.sql -Force
+
+# B. Storage/auth change (Supabase)
+npx supabase migration new add_<storage_feature>  # storage/auth only!
+# Edit supabase/migrations/<ts>_add_<storage_feature>.sql
+npx supabase db reset
+
+# C. Seed (two-phase: GoTrue + Prisma)
+npx prisma migrate deploy && npm run db:users && npx prisma db seed  # or npm run db:setup
+# db:users = GoTrue Admin API (5 fixed UUIDs), db seed = db/seed.sql via prisma/seed.ts (idempotent)
 ```
 
-`prisma migrate` is deliberately **not** part of this. Two sources of truth for
-one schema is how you end up with a migration that drops a trigger. Similarly, never edit
-`supabase/migrations/*.sql` without editing `db/schema.sql` — see `AGENTS.md:3` mandatory workflow
-and `supabase/README.md:1` for the `migration repair` needed before first `supabase db push` to
-`wndilblmkkdyzpffmwap` (remote was populated via `scripts/sql.mjs:28`, not via `db push`).
+Never create `public.*` tables via `supabase migration new` and never hand-edit `db/schema.sql` as
+source — see `AGENTS.md:3` mandatory workflow and `supabase/README.md:1` for the `migration repair`
+needed before first `supabase db push` to `wndilblmkkdyzpffmwap` (DB still populated via
+`DIRECT_URL`/`prisma migrate deploy`, not via `db push`). `npx prisma db pull` is inspection-only.
 
 ## Minting a test token locally
 
