@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@smartkasi/theme": ["../../packages/theme/src/index.ts"],
+      "@smartkasi/theme/*": ["../../packages/theme/src/*"]
     }
   },
   "include": [
