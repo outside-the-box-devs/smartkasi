@@ -1,6 +1,5 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { Banner } from '@astryxdesign/core/Banner';
 import { VStack, HStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
