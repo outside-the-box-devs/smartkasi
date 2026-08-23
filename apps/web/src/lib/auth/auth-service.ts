@@ -31,9 +31,11 @@ function saveSession(t: GoTrueTokenResponse): SessionUser {
     email: t.user.email,
     role: t.user.app_metadata?.role ?? 'customer',
   };
-  localStorage.setItem(TOKEN_KEY, t.access_token);
-  if (t.refresh_token) localStorage.setItem(REFRESH_KEY, t.refresh_token);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(TOKEN_KEY, t.access_token);
+    if (t.refresh_token) localStorage.setItem(REFRESH_KEY, t.refresh_token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
   return user;
 }
 
