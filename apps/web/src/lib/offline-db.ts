@@ -16,7 +16,7 @@ const dbPromise = typeof window !== 'undefined'
         db.createObjectStore('products', { keyPath: 'barcode' });
       },
     })
-  : (null as unknown as Promise<any>);
+  : Promise.reject(new Error('offlineDB can only be used in the browser'));
 
 export const offlineDB = {
   async putInventory(item: OfflineDB['inventory']['value']) {
