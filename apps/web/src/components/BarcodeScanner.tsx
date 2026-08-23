@@ -7,7 +7,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Text as XText } from '@astryxdesign/core/Text';
 
-export default function BarcodeScanner({ shopId, onScan }: { shopId: string; onScan?: (barcode: string) => void }) {
+export default function BarcodeScanner({ onScan }: { onScan?: (barcode: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scanning, setScanning] = useState(false);
   const [last, setLast] = useState<string | null>(null);
