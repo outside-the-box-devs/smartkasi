@@ -26,30 +26,66 @@ class _ShopOwnerApplicationState extends State<ShopOwnerApplication> {
   int _index = 0;
   Shop? _shop;
   Future<Shop?>? _shopFuture;
+  AuthController? _auth;
+  String? _activeShopId;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _ensureShop();
+    final auth = SmartKasiScope.of(context).auth;
+    if (_auth != auth) {
+      _auth?.removeListener(_onAuthChanged);
+      _auth = auth..addListener(_onAuthChanged);
+    }
+    _syncShopContext();
   }
 
-  void _ensureShop() {
+  @override
+  void dispose() {
+    _auth?.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (!mounted) return;
+    setState(_syncShopContext);
+  }
+
+  void _syncShopContext() {
     final deps = SmartKasiScope.of(context);
     final profile = deps.auth.profile;
-    if (profile == null ||
-        profile.shopIds.isEmpty ||
-        _shop != null ||
-        _shopFuture != null) {
+    final nextShopId = profile == null || profile.shopIds.isEmpty
+        ? null
+        : profile.shopIds.first;
+
+    if (nextShopId == null) {
+      _activeShopId = null;
+      _shop = null;
+      _shopFuture = null;
       return;
     }
-    _shopFuture = deps.api.getShop(profile.shopIds.first).then((shop) {
-      if (mounted) setState(() => _shop = shop);
+
+    if (_activeShopId == nextShopId &&
+        (_shop != null || _shopFuture != null)) {
+      return;
+    }
+
+    _activeShopId = nextShopId;
+    _shop = null;
+    _shopFuture = deps.api.getShop(nextShopId).then((shop) {
+      if (mounted && _activeShopId == shop.id) {
+        setState(() {
+          _shop = shop;
+          _shopFuture = null;
+        });
+      }
       return shop;
     });
   }
 
   void _setShop(Shop shop) {
     setState(() {
+      _activeShopId = shop.id;
       _shop = shop;
       _shopFuture = null;
     });

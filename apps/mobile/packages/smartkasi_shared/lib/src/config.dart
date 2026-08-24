@@ -41,7 +41,17 @@ class SmartKasiConfig {
       'SUPABASE_URL',
       defaultValue: 'https://wndilblmkkdyzpffmwap.supabase.co',
     );
-    const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    const bundledPublishableKey =
+        'sb_publishable_l25JMN-9lfGmKwdkJSqUvg_EwJG-wep';
+    const supabasePublishableKey = String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+    );
+    const legacySupabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    final supabaseAnonKey = supabasePublishableKey.trim().isNotEmpty
+        ? supabasePublishableKey
+        : legacySupabaseAnonKey.trim().isNotEmpty
+        ? legacySupabaseAnonKey
+        : bundledPublishableKey;
     final defaultLat =
         double.tryParse(
           const String.fromEnvironment('SMARTKASI_DEFAULT_LAT'),

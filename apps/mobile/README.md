@@ -19,10 +19,11 @@ The API defaults to the live Railway base:
 https://api-production-5594.up.railway.app/v1
 ```
 
-Protected flows require the Supabase publishable/anon key. Pass it at launch:
+Protected flows default to the hosted SmartKasi Supabase project and bundled
+publishable key. Override it only when switching projects:
 
 ```bash
-flutter run --dart-define=SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+flutter run --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 ```
 
 Optional overrides:
@@ -30,6 +31,7 @@ Optional overrides:
 ```bash
 --dart-define=SMARTKASI_API_BASE_URL=https://api-production-5594.up.railway.app/v1
 --dart-define=SUPABASE_URL=https://wndilblmkkdyzpffmwap.supabase.co
+--dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 --dart-define=SMARTKASI_DEFAULT_LAT=-26.238
 --dart-define=SMARTKASI_DEFAULT_LNG=27.9083
 ```
@@ -40,13 +42,13 @@ Demo accounts are prefilled per app. Password for all demo users is `Password123
 
 ```bash
 cd apps/mobile/customer_app
-flutter run --dart-define=SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+flutter run
 
 cd ../delivery_app
-flutter run --dart-define=SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+flutter run
 
 cd ../shop_owner_app
-flutter run --dart-define=SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+flutter run
 ```
 
 ## Verify

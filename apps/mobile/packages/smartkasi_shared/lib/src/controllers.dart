@@ -75,7 +75,8 @@ class AuthController extends ChangeNotifier {
     if (!_config.hasSupabase) {
       throw const ApiException(
         code: 'SUPABASE_CONFIG_MISSING',
-        message: 'Start Flutter with --dart-define=SUPABASE_ANON_KEY=...',
+        message:
+            'Start Flutter with --dart-define=SUPABASE_PUBLISHABLE_KEY=...',
       );
     }
 

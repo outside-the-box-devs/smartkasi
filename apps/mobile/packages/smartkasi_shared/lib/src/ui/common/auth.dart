@@ -30,7 +30,7 @@ class ConfigBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Public data works. Sign-in and protected actions need SUPABASE_ANON_KEY.',
+                  'Public data works. Sign-in and protected actions need a Supabase publishable key.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
