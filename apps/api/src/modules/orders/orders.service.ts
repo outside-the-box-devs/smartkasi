@@ -9,14 +9,34 @@ import {
   AcceptLegDto, CancelOrderDto, CreateOrderDto, ListOrdersQuery, RejectLegDto,
 } from './dto';
 import { QuoteService } from './quote.service';
+import {
+  presentCustomerDelivery,
+  sequencePickups,
+  type CustomerDeliveryInput,
+} from '../delivery/delivery.presenter';
 import type {
   Order, OrderItem, OrderShop, OrderShopStatus, OrderStatus, Shop,
 } from '../../generated/prisma/client';
 
 type LegWithItems = OrderShop & { shop: Shop; items: OrderItem[] };
-type OrderWithLegs = Order & { legs: LegWithItems[] };
+type DeliveryWithCourier = CustomerDeliveryInput;
+type OrderWithLegs = Order & {
+  legs: LegWithItems[];
+  delivery?: DeliveryWithCourier | null;
+};
 
 const CANCELLABLE: OrderStatus[] = ['placed', 'accepted', 'partially_accepted'];
+
+/**
+ * Enough of the delivery to build a CustomerDelivery, and no more. The courier
+ * profile is pulled for the display name only — presentCustomerDelivery
+ * withholds it entirely until the run is collected.
+ */
+const DELIVERY_FOR_ORDER = {
+  include: {
+    courier: { include: { profile: { select: { fullName: true } } } },
+  },
+} as const;
 
 @Injectable()
 export class OrdersService {
@@ -86,7 +106,10 @@ export class OrdersService {
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
-        include: { legs: { include: { shop: true, items: true } } },
+        include: {
+          legs: { include: { shop: true, items: true } },
+          delivery: DELIVERY_FOR_ORDER,
+        },
         orderBy: { placedAt: 'desc' },
         skip: q.offset,
         take: q.per_page,
@@ -99,7 +122,10 @@ export class OrdersService {
   async get(user: AuthUser, orderId: string) {
     const row = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { legs: { include: { shop: true, items: true } } },
+      include: {
+        legs: { include: { shop: true, items: true } },
+        delivery: DELIVERY_FOR_ORDER,
+      },
     });
     if (!row) throw ApiError.notFound('Order');
 
@@ -344,7 +370,12 @@ export class OrdersService {
       delivery_fee_cents: Number(row.deliveryFeeCents),
       total_cents: Number(row.totalCents),
       legs: row.legs.map((l) => this.presentLeg(l)),
-      delivery: null,
+      delivery: row.delivery
+        ? presentCustomerDelivery(row.delivery, sequencePickups(row.legs), {
+            lat: row.dropoffLat,
+            lng: row.dropoffLng,
+          })
+        : null,
       placed_at: row.placedAt.toISOString(),
       completed_at: row.completedAt?.toISOString() ?? null,
     };

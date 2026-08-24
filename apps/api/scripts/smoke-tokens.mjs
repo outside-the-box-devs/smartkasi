@@ -35,11 +35,12 @@ if (!url || !key) {
 }
 
 const PASSWORD = 'Password123!';
-// Same three users smoke.mjs expects, by the env var it reads each from.
+// Same four users smoke.mjs expects, by the env var it reads each from.
 const USERS = [
   ['OWNER_TOKEN', 'thoko@smartkasi.test'],
   ['OWNER2_TOKEN', 'sipho@smartkasi.test'],
   ['CUSTOMER_TOKEN', 'customer@smartkasi.test'],
+  ['COURIER_TOKEN', 'courier@smartkasi.test'],
 ];
 
 const env = { ...process.env };

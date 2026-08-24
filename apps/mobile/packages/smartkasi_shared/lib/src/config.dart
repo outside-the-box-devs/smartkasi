@@ -30,7 +30,6 @@ class SmartKasiConfig {
     required this.supabaseAnonKey,
     required this.defaultLat,
     required this.defaultLng,
-    required this.mockBearerToken,
   });
 
   factory SmartKasiConfig.fromEnvironment(SmartKasiAppKind kind) {
@@ -53,7 +52,6 @@ class SmartKasiConfig {
           const String.fromEnvironment('SMARTKASI_DEFAULT_LNG'),
         ) ??
         27.9083;
-    const mockBearerToken = String.fromEnvironment('SMARTKASI_MOCK_BEARER');
 
     return SmartKasiConfig(
       kind: kind,
@@ -62,7 +60,6 @@ class SmartKasiConfig {
       supabaseAnonKey: supabaseAnonKey,
       defaultLat: defaultLat,
       defaultLng: defaultLng,
-      mockBearerToken: mockBearerToken,
     );
   }
 
@@ -72,10 +69,7 @@ class SmartKasiConfig {
   final String supabaseAnonKey;
   final double defaultLat;
   final double defaultLng;
-  final String mockBearerToken;
 
   bool get hasSupabase =>
       supabaseUrl.trim().isNotEmpty && supabaseAnonKey.trim().isNotEmpty;
-
-  bool get hasMockBearer => mockBearerToken.trim().isNotEmpty;
 }

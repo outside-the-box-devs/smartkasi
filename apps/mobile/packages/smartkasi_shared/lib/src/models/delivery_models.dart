@@ -71,6 +71,7 @@ class CourierJob {
 class CourierPickup {
   const CourierPickup({
     required this.sequence,
+    required this.shopId,
     required this.shopName,
     required this.addressLine,
     required this.collected,
@@ -80,6 +81,7 @@ class CourierPickup {
 
   factory CourierPickup.fromJson(JsonMap json) => CourierPickup(
     sequence: cents(json['sequence']),
+    shopId: text(json['shop_id']),
     shopName: text(json['shop_name']),
     addressLine: text(json['address_line']),
     collected: flag(json['collected']),
@@ -88,6 +90,7 @@ class CourierPickup {
   );
 
   final int sequence;
+  final String shopId;
   final String shopName;
   final String addressLine;
   final bool collected;

@@ -195,8 +195,18 @@ console.log(h+'.'+p+'.'+c.createHmac('sha256',s).update(h+'.'+p).digest('base64u
 | `prisma db pull` fails with `P4002` | Expected. `profiles.id` references `auth.users` across schemas. Do not add `auth` to the datasource to silence it — see `docs/BUILD_ORDER.md` § 1. |
 | Seeded numbers look wrong (stock too high, doubled sales) | The seed was applied more than once by an older copy of `db/seed.sql`, before the idempotency guard. Reset and re-seed. |
 
-## Testing the client apps before the backend is up
+## Testing the client apps
 
-`mock/README.md`. Prism serves the contract on `:4010` with realistic fixtures,
-including the `Prefer: code=404` trick for exercising error paths. Note it has
-**no `/v1` prefix** and it **does** require a bearer header.
+Point them at the real API — there is no mock any more. The Prism server that
+used to run on `:4010` was retired when the delivery endpoints stopped being
+stubs; a mock that disagrees with the server is worse than no mock, and it had
+already drifted (it accepted a `collect` body the real contract rejected).
+
+```bash
+flutter run --dart-define=SUPABASE_ANON_KEY=... \
+  --dart-define=SMARTKASI_API_BASE_URL=https://api-production-5594.up.railway.app/v1
+```
+
+To exercise error paths, use real ones: an unknown barcode is a genuine `404`,
+a spent quote a genuine `409`, and a second courier accepting a taken job a
+genuine `DELIVERY_ALREADY_ASSIGNED`. `npm run smoke:auth` drives all three.

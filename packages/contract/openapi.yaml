@@ -126,10 +126,8 @@ info:
 servers:
   - url: http://localhost:3000/v1
     description: Local development
-  - url: http://localhost:4010/v1
-    description: Prism mock server (see mock/README.md) — use this until Sat 10:00
-  - url: https://api.smartkasi.co.za/v1
-    description: Production (not provisioned yet)
+  - url: https://api-production-5594.up.railway.app/v1
+    description: Production
 
 security:
   - supabaseJwt: []
@@ -158,7 +156,7 @@ tags:
   - name: Uploads
     description: Presigned Cloudflare R2 upload URLs.
   - name: Delivery
-    description: "[STUB in v1] Courier assignment and tracking."
+    description: Courier dispatch, pickup sequencing, and customer-safe tracking.
   - name: AI
     description: "[STUB in v1] Dish-to-ingredients basket builder."
   - name: Payments
@@ -1528,15 +1526,21 @@ paths:
       - { $ref: "#/components/parameters/OrderId" }
     post:
       tags: [Delivery]
-      summary: "[STUB] Request a courier for an order"
+      summary: Request a courier for an order
       description: |
-        **STUB.** Returns a fixed `unassigned` delivery. No courier matching
-        runs, nobody is dispatched, no payout is calculated.
+        Puts the order on the courier job board and returns the new delivery in
+        `unassigned`.
 
-        Safe to wire the button and the resulting status screen. Do not build
-        anything that depends on the status ever changing.
+        **Idempotent.** `deliveries.order_id` is unique, so calling this twice
+        returns the same delivery rather than a `409` — a double-tapped button
+        is a normal event, not an error.
+
+        The courier payout is derived from the order's service fee at this
+        moment and fixed for the run. `preferred_mode` is a filter, not a
+        booking: it decides which couriers are offered the job, and the
+        accepting courier's actual mode replaces it.
       operationId: requestDelivery
-      x-smartkasi-status: STUB
+      x-smartkasi-status: LIVE
       requestBody:
         required: false
         content:
@@ -1547,7 +1551,7 @@ paths:
                 preferred_mode: { $ref: "#/components/schemas/CourierMode" }
       responses:
         "202":
-          description: Delivery requested (stubbed).
+          description: Delivery requested and offered to couriers.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CustomerDelivery" }
@@ -1568,19 +1572,24 @@ paths:
         schema: { type: string, format: uuid }
     get:
       tags: [Delivery]
-      summary: "[STUB] Track a delivery (customer view)"
+      summary: Track a delivery (customer view)
       description: |
-        **STUB.** Returns a fixed `en_route_dropoff` delivery.
-
         Note what this schema does **not** contain: coordinates, route, courier
         phone. That is deliberate and permanent — see § Route privacy. The
         customer app gets a status enum and a coarse ETA band, and that is the
         complete set of things it is allowed to draw.
+
+        The `courier` block stays `null` until the goods are `collected`,
+        and never carries more than a first name plus an initial. `eta_band`
+        is computed from shop and drop-off coordinates only — never from a
+        courier position, which is why it is a band and not a time.
+
+        Readable by the order's customer, the assigned courier, or an admin.
       operationId: getDelivery
-      x-smartkasi-status: STUB
+      x-smartkasi-status: LIVE
       responses:
         "200":
-          description: Delivery status (stubbed).
+          description: Delivery status.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CustomerDelivery" }
@@ -1596,13 +1605,24 @@ paths:
   /courier/jobs:
     get:
       tags: [Delivery]
-      summary: "[STUB] Available jobs for the logged-in courier"
-      description: "**STUB.** Returns two fixed jobs. No real matching, no radius filtering."
+      summary: Available jobs for the logged-in courier
+      description: |
+        Unassigned deliveries whose order has at least one shop committed to
+        fulfilling it.
+
+        Matched from the courier's **home address**, not a live position — this
+        API never tracks a courier to offer work. Reach is the courier's
+        `max_radius_m`, capped at 2 km for `foot` and `bicycle`. A courier
+        who has set no home address sees every open job rather than none.
+
+        Requires the `courier` role, a verified account, and `is_online`.
+        `expires_at` is an offer window, not a lock: the job is still claimed
+        first-come, and a late `accept` gets a `409`.
       operationId: listCourierJobs
-      x-smartkasi-status: STUB
+      x-smartkasi-status: LIVE
       responses:
         "200":
-          description: Offered jobs (stubbed).
+          description: Offered jobs.
           content:
             application/json:
               schema:
@@ -1636,15 +1656,24 @@ paths:
         schema: { type: string, format: uuid }
     post:
       tags: [Delivery]
-      summary: "[STUB] Courier accepts a job"
+      summary: Courier accepts a job
+      description: |
+        Claims the job. Two couriers tapping the same job at the same moment is
+        the normal case on a small board, so the claim is a conditional write:
+        whoever writes second gets a `409`, never a silent reassignment.
       operationId: acceptCourierJob
-      x-smartkasi-status: STUB
+      x-smartkasi-status: LIVE
       responses:
         "200":
-          description: Accepted (stubbed). Returns the courier-side view, which *does* include addresses.
+          description: Accepted. Returns the courier-side view, which *does* include addresses.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierDelivery" }
+        "409":
+          description: "`DELIVERY_ALREADY_ASSIGNED` — another courier took it first. Refresh the board."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /courier/jobs/{deliveryId}/collect:
     parameters:
@@ -1654,21 +1683,29 @@ paths:
         schema: { type: string, format: uuid }
     post:
       tags: [Delivery]
-      summary: "[STUB] Courier confirms pickup from a shop"
+      summary: Courier confirms pickup from a shop
+      description: |
+        Marks one shop's leg collected. The delivery only becomes `collected`
+        once **every** committed leg is in the bag — a courier holding two of
+        three shops is `en_route_pickup`, not on the way to the customer. The
+        order moves to `dispatched` on the last pickup.
+
+        `shop_id` is optional and means "the next uncollected stop in
+        sequence", which is what a plain "Collected" button in the courier app
+        means. Sending a shop that is not on this run is a `422`.
       operationId: collectCourierJob
-      x-smartkasi-status: STUB
+      x-smartkasi-status: LIVE
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required: [shop_id]
               properties:
                 shop_id: { type: string, format: uuid }
       responses:
         "200":
-          description: Collected (stubbed).
+          description: Collected.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierDelivery" }
@@ -1681,9 +1718,17 @@ paths:
         schema: { type: string, format: uuid }
     post:
       tags: [Delivery]
-      summary: "[STUB] Courier confirms handover to the customer"
+      summary: Courier confirms handover to the customer
+      description: |
+        Ends the delivery and completes the order together.
+
+        `cash_collected_cents` is checked against the order total rather than
+        stored: v1 is cash on handover, and a courier arriving short is a
+        conversation at the gate, not a number to file silently. A mismatch is a
+        `422 TOTALS_MISMATCH`. Handing over before every shop is collected is
+        a `422 DELIVERY_NOT_COLLECTED`.
       operationId: deliverCourierJob
-      x-smartkasi-status: STUB
+      x-smartkasi-status: LIVE
       requestBody:
         required: false
         content:
@@ -1695,7 +1740,7 @@ paths:
                 cash_collected_cents: { type: integer, format: int64 }
       responses:
         "200":
-          description: Delivered (stubbed).
+          description: Delivered.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierDelivery" }
@@ -1906,6 +1951,9 @@ components:
                 - SHOPS_TOO_FAR_APART
                 - OUTSIDE_SERVICE_AREA
                 - ORDER_NOT_CANCELLABLE
+                - DELIVERY_ALREADY_ASSIGNED
+                - DELIVERY_NOT_COLLECTED
+                - COURIER_NOT_AVAILABLE
                 - RATE_LIMITED
                 - NOT_IMPLEMENTED
                 - INTERNAL_ERROR

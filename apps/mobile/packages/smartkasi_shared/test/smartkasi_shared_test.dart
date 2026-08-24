@@ -19,4 +19,20 @@ void main() {
     expect(delivery.etaBand, '10-20min');
     expect(delivery.courierName, 'Thabo M.');
   });
+
+  test('a courier pickup carries the shop it belongs to', () {
+    // collectJob sends this id back as shop_id. Losing it here is how a
+    // multi-shop run ends up ticking off the wrong spaza.
+    final pickup = CourierPickup.fromJson({
+      'sequence': 1,
+      'shop_id': '7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa',
+      'shop_name': "Mama Thoko's Tuckshop",
+      'address_line': '1423 Vilakazi St',
+      'collected': false,
+      'item_count': 3,
+    });
+
+    expect(pickup.shopId, '7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa');
+    expect(pickup.collected, isFalse);
+  });
 }

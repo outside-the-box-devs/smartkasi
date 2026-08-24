@@ -42,6 +42,7 @@ const IDS = {
   owner1: '11111111-0000-4000-8000-000000000001',   // Mama Thoko's
   owner2: '11111111-0000-4000-8000-000000000002',   // Bra Sipho
   customer: '22222222-0000-4000-8000-000000000002', // Lerato
+  courier: '33333333-0000-4000-8000-000000000003',  // Thabo, bicycle, verified
   shop1: '7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa',
   shop2: '7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb',
   shop3: '7b0e1c2a-3333-4a3b-9c11-cccccccccccc',    // advertising_only
@@ -55,6 +56,7 @@ const TOKENS = {
   owner1: process.env.OWNER_TOKEN ?? mint(IDS.owner1, 'shop_owner'),
   owner2: process.env.OWNER2_TOKEN ?? mint(IDS.owner2, 'shop_owner'),
   customer: process.env.CUSTOMER_TOKEN ?? mint(IDS.customer, 'customer'),
+  courier: process.env.COURIER_TOKEN ?? mint(IDS.courier, 'courier'),
 };
 
 // ---- tiny test harness ----------------------------------------------------
@@ -388,6 +390,147 @@ await checkAuth('shop sees the order in its queue', async () => {
   const leg = r.body.data[0];
   expect(!('customer_last_name' in leg), 'shop should only get a first name');
   return `${r.body.data.length} legs, customer shown as "${leg.customer_first_name}"`;
+});
+
+
+console.log('\nDelivery & dispatch');
+let deliveryId, payoutCents;
+
+/**
+ * Every key in a response, at any depth.
+ *
+ * The customer delivery view is a whitelist built field by field, and this is
+ * what proves it stayed one. A single accidental spread of a database row would
+ * ship pickup addresses, the customer's phone number, or a courier position to
+ * every device — so this asserts on absence, not on the happy path.
+ */
+function allKeys(value, found = new Set()) {
+  if (Array.isArray(value)) { value.forEach((v) => allKeys(v, found)); return found; }
+  if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) { found.add(k); allKeys(v, found); }
+  }
+  return found;
+}
+
+await checkAuth('customer requests a courier', async () => {
+  const r = await api(`/orders/${orderId}/delivery`, { method: 'POST', token: TOKENS.customer, body: {} });
+  expect(r.status === 202, `status ${r.status} ${JSON.stringify(r.body).slice(0, 140)}`);
+  expect(r.body.status === 'unassigned', `status is ${r.body.status}`);
+  expect(r.body.courier === null, 'courier revealed before anyone was assigned');
+  expect(r.body.eta_band === null, 'an unassigned delivery cannot have an ETA');
+  deliveryId = r.body.id;
+  return `${r.body.id.slice(0, 8)}, unassigned`;
+});
+
+await checkAuth('requesting twice returns the same delivery, not a 409', async () => {
+  const r = await api(`/orders/${orderId}/delivery`, { method: 'POST', token: TOKENS.customer, body: {} });
+  expect(r.status === 202, `status ${r.status}`);
+  expect(r.body.id === deliveryId, 'a second request created a second delivery');
+  return 'idempotent on order_id';
+});
+
+await checkAuth('the job reaches the courier board', async () => {
+  const r = await api('/courier/jobs', { token: TOKENS.courier });
+  expect(r.status === 200, `status ${r.status} ${JSON.stringify(r.body).slice(0, 140)}`);
+  const job = r.body.data.find((j) => j.delivery_id === deliveryId);
+  expect(job, 'the delivery we just requested is not on the board');
+  expect(job.pickup_count === 1, `pickup_count ${job.pickup_count} — the rejected leg is not a pickup`);
+  expect(job.total_distance_m > 0, 'total_distance_m is 0 — the route was never measured');
+
+  const o = await api(`/orders/${orderId}`, { token: TOKENS.customer });
+  const expected = Math.round((o.body.service_fee_cents * 80) / 100);
+  expect(job.payout_cents === expected, `payout ${job.payout_cents}, expected ${expected} (80% of the service fee)`);
+  payoutCents = job.payout_cents;
+  return `${job.order_number}, ${job.total_distance_m}m, pays ${rands(job.payout_cents)}`;
+});
+
+await checkAuth('a customer cannot read the courier board', async () => {
+  const r = await api('/courier/jobs', { token: TOKENS.customer });
+  expect(r.status === 403, `status ${r.status} — pickup addresses MUST NOT reach a customer`);
+  return 'role gate holding';
+});
+
+await checkAuth('courier accepts the job', async () => {
+  const r = await api(`/courier/jobs/${deliveryId}/accept`, { method: 'POST', token: TOKENS.courier });
+  expect(r.status === 200, `status ${r.status} ${JSON.stringify(r.body).slice(0, 140)}`);
+  expect(r.body.status === 'assigned', `status is ${r.body.status}`);
+  expect(r.body.pickups[0].address_line, 'the courier view must carry pickup addresses');
+  expect(r.body.cash_to_collect_cents > 0, 'nothing to collect — v1 is cash on handover');
+  return `assigned, ${r.body.pickups.length} pickup, collect ${rands(r.body.cash_to_collect_cents)}`;
+});
+
+await checkAuth('a second accept returns 409, not a silent steal', async () => {
+  const r = await api(`/courier/jobs/${deliveryId}/accept`, { method: 'POST', token: TOKENS.courier });
+  expect(r.status === 409, `status ${r.status} — two couriers racing for one job must not both win`);
+  expect(r.body.error.code === 'DELIVERY_ALREADY_ASSIGNED', `code ${r.body.error?.code}`);
+  return 'conditional update held the line';
+});
+
+await checkAuth('the customer view carries no location, route or phone', async () => {
+  const r = await api(`/deliveries/${deliveryId}`, { token: TOKENS.customer });
+  expect(r.status === 200, `status ${r.status}`);
+  expect(r.body.courier === null, 'the courier is named before the goods are even collected');
+
+  const banned = [
+    'lat', 'lng', 'latitude', 'longitude', 'phone', 'customer_phone', 'address_line',
+    'dropoff', 'dropoff_address', 'dropoff_notes', 'pickups', 'positions',
+    'courier_id', 'payout_cents', 'cash_to_collect_cents', 'proof_photo_url',
+  ];
+  const keys = allKeys(r.body);
+  const leaked = banned.filter((k) => keys.has(k));
+  expect(leaked.length === 0, `LEAKED: ${leaked.join(', ')} — see docs/API_CONTRACT.md § Route privacy`);
+  return `${[...keys].length} keys, none of them a location`;
+});
+
+await checkAuth('collecting from a shop that is not on the run is refused', async () => {
+  const r = await api(`/courier/jobs/${deliveryId}/collect`, {
+    method: 'POST', token: TOKENS.courier, body: { shop_id: IDS.shop3 },
+  });
+  expect(r.status === 422, `status ${r.status}`);
+  return 'wrong shop rejected';
+});
+
+await checkAuth('an empty collect body works — the courier app sends one', async () => {
+  const r = await api(`/courier/jobs/${deliveryId}/collect`, { method: 'POST', token: TOKENS.courier, body: {} });
+  expect(r.status === 200, `status ${r.status} ${JSON.stringify(r.body).slice(0, 140)} — shop_id must stay optional`);
+  expect(r.body.status === 'collected', `status is ${r.body.status}`);
+  expect(r.body.pickups.every((pk) => pk.collected), 'a pickup is still open');
+
+  const o = await api(`/orders/${orderId}`, { token: TOKENS.customer });
+  expect(o.body.status === 'dispatched', `order status is ${o.body.status}, expected dispatched`);
+  return 'last pickup collected -> order dispatched';
+});
+
+await checkAuth('the courier is named only once the goods are collected', async () => {
+  const r = await api(`/deliveries/${deliveryId}`, { token: TOKENS.customer });
+  expect(r.body.courier !== null, 'courier still hidden after collection');
+  expect(/^\S+ \S\.$/.test(r.body.courier.display_name), `display_name "${r.body.courier.display_name}" is not "First L."`);
+  expect(r.body.eta_band !== null, 'no ETA band once a courier is on the way');
+  expect(!('phone' in r.body.courier), 'courier phone number leaked to the customer');
+  return `${r.body.courier.display_name}, ${r.body.eta_band}`;
+});
+
+await checkAuth('short cash at handover is refused', async () => {
+  const r = await api(`/courier/jobs/${deliveryId}/deliver`, {
+    method: 'POST', token: TOKENS.courier, body: { cash_collected_cents: 1 },
+  });
+  expect(r.status === 422, `status ${r.status}`);
+  expect(r.body.error.code === 'TOTALS_MISMATCH', `code ${r.body.error?.code}`);
+  return 'a short handover is a conversation at the gate, not a silent write';
+});
+
+await checkAuth('handover completes the order', async () => {
+  const o = await api(`/orders/${orderId}`, { token: TOKENS.customer });
+  const r = await api(`/courier/jobs/${deliveryId}/deliver`, {
+    method: 'POST', token: TOKENS.courier, body: { cash_collected_cents: o.body.total_cents },
+  });
+  expect(r.status === 200, `status ${r.status} ${JSON.stringify(r.body).slice(0, 140)}`);
+  expect(r.body.status === 'delivered', `status is ${r.body.status}`);
+
+  const after = await api(`/orders/${orderId}`, { token: TOKENS.customer });
+  expect(after.body.status === 'completed', `order status is ${after.body.status}`);
+  expect(after.body.delivery?.status === 'delivered', 'the order no longer reports its own delivery');
+  return `delivered, order completed, courier earned ${rands(payoutCents)}`;
 });
 
 console.log('\nStubs (shape only — values are fake)');

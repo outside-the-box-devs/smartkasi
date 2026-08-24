@@ -5,7 +5,6 @@
   "description": "The SmartKasi API contract. Frozen for client development \u2014 additive changes only.",
   "main": "openapi.yaml",
   "scripts": {
-    "lint": "npx @redocly/cli lint openapi.yaml",
-    "mock": "npx @stoplight/prism-cli mock openapi.yaml --port 4010 --host 0.0.0.0 --errors"
+    "lint": "npx @redocly/cli lint openapi.yaml"
   }
 }
