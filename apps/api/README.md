@@ -85,12 +85,12 @@ path is live.** Verified end to end: a signed-in demo user gets an ES256 token,
 ## Test it
 
 ```bash
-npm run smoke:auth                                   # all 24, real tokens
+npm run smoke:auth                                   # all 36, real tokens
 npm run smoke:auth -- --base https://your-api.com/v1 # against a deployment
 npm run smoke -- --public-only                       # the 9 that need no token
 ```
 
-24 checks, exits non-zero on failure. See [`docs/TESTING.md`](../../docs/TESTING.md).
+36 checks, exits non-zero on failure. See [`docs/TESTING.md`](../../docs/TESTING.md).
 
 Use `smoke:auth`, not `smoke`, on this project. Plain `smoke` self-signs HS256
 tokens from `SUPABASE_JWT_SECRET`; that secret is blank here because the project
@@ -142,7 +142,7 @@ src/
     guards/                Supabase JWT + roles
   modules/
     health me shops catalog search inventory sync sales orders flyers uploads
-    stubs/                 delivery, ai, payments — fixed responses, delete when real
+    stubs/                 ai, payments — fixed responses, delete when real
 ```
 
 ## Decisions you should not undo without reading this
@@ -216,11 +216,11 @@ with `Number()` explicitly; the polyfill is the safety net.
 
 ## Migrations
 
-`db/schema.sql:1` is the source of truth — it carries the triggers (`db/schema.sql:443-490`), the RLS
-policies (`db/schema.sql:500-552`) and the check constraints that Prisma cannot express.
+`db/schema.sql:1` is the source of truth — it carries the triggers (`db/schema.sql:452-496`), the RLS
+policies (`db/schema.sql:501-560`) and the check constraints that Prisma cannot express.
 
 **Local Supabase path (2026-08-22 fix — see `AGENTS.md:1`):** `db/schema.sql` is mirrored verbatim to
-`supabase/migrations/20260821123132_init_smartkasi.sql:1` (25872 bytes) and `db/seed.sql` to `supabase/seed.sql:1`
+`supabase/migrations/20260821123132_init_smartkasi.sql:1` (26443 bytes) and `db/seed.sql` to `supabase/seed.sql:1`
 so `npx supabase db reset` (or `npm run supabase:reset` from the repo root) applies the same schema to the
 local Postgres at `supabase/config.toml:35` port `54322`. `supabase/config.toml:71` `sql_paths = ["./seed.sql"]`
 depends on that copy.

@@ -67,7 +67,7 @@ cd apps/api
 npm run smoke:auth
 ```
 
-**Checkpoint:** ✅ all 24 pass against the real Supabase project.
+**Checkpoint:** ✅ all 36 pass against the real Supabase project.
 
 Use `smoke:auth`, not `smoke`. Plain `smoke` self-signs HS256 tokens from
 `SUPABASE_JWT_SECRET`; that is blank here by design, so `mint()` returns
@@ -96,7 +96,7 @@ npm run db:seed
 - Set every var from `apps/api/.env.example`.
 - CORS is already `origin: true`.
 
-**Checkpoint:** `npm run smoke:auth -- --base https://<your-url>/v1` — all 24 green
+**Checkpoint:** `npm run smoke:auth -- --base https://<your-url>/v1` — all 36 green
 against the deployed instance. (Plain `smoke` would report 9 passed and skip the
 rest, which looks green enough to deploy on.) Then `curl https://<your-url>/v1/health` from
 your phone on mobile data. Post the URL in the team channel the moment it works — that unblocks the
@@ -122,13 +122,18 @@ Post in the channel:
 
 ## What to drop, and say out loud that you dropped it
 
-- **Delivery.** Stubbed. The courier supply side does not exist as a pool in the
-  township — that is a business problem, not a sprint. Demo collection.
+- ~~**Delivery.** Stubbed.~~ **Retired 2026-08-23.** Dispatch is real end to
+  end: request → job board → accept → collect → handover, with a race-safe
+  accept. The courier supply problem is still real, but part of it turned out to
+  be pricing rather than recruitment — see issue #34. There is still no way to
+  *become* a courier: #25.
 - **AI dish→ingredients.** Stubbed. The shape is right; wiring a model tonight
   buys one slide and costs three hours.
 - **Payments.** Cash only. Already the stated plan.
 - **Realtime.** Poll at 20 s. Nobody in the room will notice.
-- **Admin licence verification.** The seed ships two pre-verified shops.
+- **Admin licence verification.** The seed ships two pre-verified shops. Still
+  dropped, now with a decision attached: verification is a platform action
+  behind the `admin` role in the operator console, never self-service. #26, #27.
 
 ## The failure modes, ranked
 

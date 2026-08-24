@@ -23,7 +23,7 @@ only SmartKasi API, and every delivery endpoint on it is real.
 
 ```
 apps/api/                 NestJS + Prisma. Every LIVE endpoint, working.
-apps/web/                 Next.js admin dashboard.
+apps/web/                 Next.js. SCAFFOLD ONLY — unmodified create-next-app. See issue #27.
 packages/contract/        openapi.yaml — the contract. Frozen; additive changes only.
 db/schema.sql             Postgres/Supabase schema. Source of truth (triggers, RLS, constraints).
 db/seed.sql               3 Soweto shops, 12 real SA products, a week of POS sales, one live order.
@@ -73,7 +73,7 @@ the demo".
 ## Verified, not just written
 
 The schema and seed are applied to the live Supabase project
-(`wndilblmkkdyzpffmwap`, eu-west-1), and **all 24 smoke checks pass against it**.
+(`wndilblmkkdyzpffmwap`, eu-west-1), and **all 36 smoke checks pass against it**.
 Auth is JWKS/ES256 — verified with a real signed-in user, not inferred.
 Confirmed working:
 
@@ -91,11 +91,15 @@ Confirmed working:
   with the order landing on `completed` and a second courier's accept losing
   the race with a `409`
 
-## Open questions for the team
+## Decided, and where the rest live
 
-Answer before Sunday, not during integration. Full list at the bottom of
-`docs/API_CONTRACT.md`; the two that block client code:
+The two questions that blocked client code are answered. The fee model is now
+**R18 base + R6 per extra shop + R3.50/km, courier take 75%**, and
+`SHOPS_TOO_FAR_APART` fires beyond **1.5 km**. The old numbers paid a courier
+R9.20 for a half-hour round trip on foot, which is below minimum wage and is a
+large part of why courier supply "does not exist as a pool". Reasoning and the
+worked examples are in `docs/API_CONTRACT.md` § 9 and issue #34.
 
-1. **Service fee constants.** Currently R10 base + R5 per extra shop + R1.50/km.
-   Are those the demo numbers?
-2. **Max basket spread.** `SHOPS_TOO_FAR_APART` fires beyond 2 km. Right number?
+Everything still open is in the tracker, grouped into six milestones. The two
+that block a pilot: **#21** (nobody who signs up can become a shop owner or a
+courier) and **#22** (the till cannot price an item without a network).

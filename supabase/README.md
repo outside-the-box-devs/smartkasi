@@ -4,13 +4,13 @@
 
 ## What lives here
 
-- `supabase/migrations/20260821123132_init_smartkasi.sql:1` — verbatim copy of `db/schema.sql:1` (25872 bytes). Applied by `supabase db reset` to the local Postgres at `supabase/config.toml:35` `54322`.
+- `supabase/migrations/20260821123132_init_smartkasi.sql:1` — verbatim copy of `db/schema.sql:1` (26443 bytes). Applied by `supabase db reset` to the local Postgres at `supabase/config.toml:35` `54322`.
 - `supabase/seed.sql:1` — verbatim copy of `db/seed.sql:1` (17921 bytes). Loaded via `supabase/config.toml:71` `sql_paths = ["./seed.sql"]`.
 - `supabase/config.toml:59-64` — `[db.migrations] enabled=true, schema_paths=[]` (migration-file mode, not declarative `schemas/`). `experimental.pgdelta.enabled=true` for `db diff`.
 
 ## Why copies
 
-`db/schema.sql` is canonical because it carries `pg_trgm` (`db/schema.sql:32`), 10 enum types (`db/schema.sql:38-49`), triggers (`db/schema.sql:443-490`), and RLS (`db/schema.sql:500-552`) that Prisma cannot express. Supabase CLI only knows `supabase/migrations/` + `supabase/seed.sql`, so we mirror — single source, two consumers. See `AGENTS.md:3` workflow.
+`db/schema.sql` is canonical because it carries `pg_trgm` (`db/schema.sql:32`), 10 enum types (`db/schema.sql:38-49`), triggers (`db/schema.sql:452-496`), and RLS (`db/schema.sql:501-560`) that Prisma cannot express. Supabase CLI only knows `supabase/migrations/` + `supabase/seed.sql`, so we mirror — single source, two consumers. See `AGENTS.md:3` workflow.
 
 ## Commands
 
@@ -53,7 +53,7 @@ Otherwise push fails on `create type user_role` (no `IF NOT EXISTS`).
 ## Verify
 
 ```powershell
-Get-Item supabase/migrations/20260821123132*.sql | Select Length  # 25872
+Get-Item supabase/migrations/20260821123132*.sql | Select Length  # 26443
 Get-Item supabase/seed.sql | Select Length                         # 17921
 Get-FileHash ../../db/schema.sql; Get-FileHash supabase/migrations/20260821123132*.sql
 ```

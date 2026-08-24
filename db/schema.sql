@@ -70,10 +70,18 @@ create table profiles (
 create index on profiles (role);
 create index profiles_home_point_idx on profiles (home_lat, home_lng);
 
--- Mirror role into the JWT so the API can authorise without a DB round trip.
--- (Supabase reads raw_app_meta_data into app_metadata on the access token.)
+-- NOT MIRRORED INTO THE JWT. There is no such trigger — see issue #21.
+--
+-- The API authorises on the token's app_metadata.role claim and falls back to
+-- 'customer' when it is absent (common/guards/supabase-auth.guard.ts). The only
+-- thing that has ever written that claim is scripts/seed-users.mjs, through the
+-- Admin API, when it creates the demo users. So this column is authoritative
+-- for display and NOTHING else: change it and the API will not notice.
+--
+-- Consequence: anyone who signs up through an app is a customer permanently.
+-- Do not build on this column until the mirroring trigger actually exists.
 comment on column profiles.role is
-  'Mirrored into auth.users.raw_app_meta_data->>''role'' by trigger; the API trusts the JWT claim and only reads this table for display.';
+  'Display only. NOT mirrored into auth.users.raw_app_meta_data — the trigger that this comment used to claim exists was never written. See issue #21. The API authorises on the JWT claim, which only scripts/seed-users.mjs sets.';
 
 -- =============================================================================
 -- SHOPS
