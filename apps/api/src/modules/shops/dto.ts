@@ -19,6 +19,10 @@ export class ListShopsQuery extends PaginationQuery {
 
   @IsOptional() @IsString() q?: string;
 
+  /** `owner_id=me` scopes the listing to the authenticated caller's shops
+   *  (dashboard view). Ignored on unauthenticated calls. */
+  @IsOptional() @IsString() owner_id?: string;
+
   @IsOptional() @Type(() => Boolean) @IsBoolean() accepts_orders?: boolean;
   @IsOptional() @Type(() => Boolean) @IsBoolean() open_now?: boolean;
 }

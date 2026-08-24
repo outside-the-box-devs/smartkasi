@@ -23,13 +23,15 @@ only SmartKasi API, and every delivery endpoint on it is real.
 
 ```
 apps/api/                 NestJS + Prisma. Every LIVE endpoint, working.
+apps/api/prisma/          Prisma schema + migrations (DB source of truth, see AGENTS.md).
+apps/api/prisma/seed.ts   Creates auth.users via GoTrue then applies db/seed.sql.
 apps/web/                 Next.js admin dashboard.
 packages/contract/        openapi.yaml — the contract. Frozen; additive changes only.
-db/schema.sql             Postgres/Supabase schema. Source of truth (triggers, RLS, constraints).
-db/seed.sql               3 Soweto shops, 12 real SA products, a week of POS sales, one live order.
+db/schema.sql             Generated reference copy of Prisma initial migration (triggers, RLS, constraints).
+db/seed.sql               3 Soweto shops, 12 real SA products, a week of POS sales, one live order (run via Prisma).
 db/reset.sql              Empties the demo data so the seed can be re-applied. Destructive.
-supabase/migrations/      Mirrored copy of db/schema.sql for `supabase db reset` (see AGENTS.md).
-supabase/seed.sql         Mirrored copy of db/seed.sql for `supabase/config.toml:71` sql_paths.
+supabase/migrations/      Storage buckets + policies only (DB is via Prisma, see AGENTS.md).
+supabase/seed.sql         Supabase-only placeholder (DB seed is via Prisma, [db.seed] disabled).
 docs/                     API_CONTRACT, ERD, BUILD_ORDER.
 ```
 

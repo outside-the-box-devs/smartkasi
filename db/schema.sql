@@ -1,9 +1,10 @@
 -- =============================================================================
--- SmartKasi — Postgres / Supabase schema
--- Source of truth for the API contract in packages/contract/openapi.yaml
+-- SmartKasi — Postgres / Supabase schema (REFERENCE COPY — DO NOT EDIT AS SOURCE)
+-- Generated from apps/api/prisma/migrations/20260822000001_init/migration.sql
+-- Source of truth is apps/api/prisma/schema.prisma + prisma/migrations/*
+-- See AGENTS.md §1. Kept for tooling that expects db/schema.sql (scripts/sql.mjs)
 --
--- Run order:  schema.sql  ->  policies.sql (inline below)  ->  seed.sql
--- Target:     Supabase Postgres 15+ (no extensions beyond uuid-ossp + pg_trgm)
+-- Target:     Supabase Postgres 17 (major_version 17 per supabase/config.toml:42)
 --
 -- CONVENTIONS
 --   * All money is BIGINT cents (ZAR). Never float. Never numeric-in-JSON.

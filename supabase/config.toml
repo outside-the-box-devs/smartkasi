@@ -65,10 +65,12 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
-enabled = true
-# Specifies an ordered list of seed files to load during db reset.
-# Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# NOTE (2026-08-22): DB seeding is now handled by Prisma (apps/api/prisma/seed.ts)
+# after `supabase start` + `prisma migrate deploy`. Keep Supabase seed disabled
+# so `supabase start` does not FK-violate on shops.owner_id (profiles come from
+# auth.users via GoTrue Admin API, not from a SQL seed).
+enabled = false
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
