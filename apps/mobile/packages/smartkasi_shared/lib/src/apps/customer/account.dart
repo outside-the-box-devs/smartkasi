@@ -19,7 +19,7 @@ class _CustomerAccountScreen extends StatelessWidget {
               const SizedBox(height: 8),
               Text('API: ${deps.config.apiBaseUrl}'),
               Text(
-                'Supabase: ${deps.config.hasSupabase ? 'configured' : 'missing anon key'}',
+                'Supabase: ${deps.config.hasSupabase ? 'configured' : 'missing auth key'}',
               ),
             ],
           ),

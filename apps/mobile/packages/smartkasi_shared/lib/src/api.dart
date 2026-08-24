@@ -404,7 +404,9 @@ class SmartKasiApi {
       CourierDelivery.fromJson(
         await postJson(
           '/courier/jobs/$deliveryId/collect',
-          body: <String, Object?>{if (shopId != null) 'shop_id': shopId},
+          body: shopId == null
+              ? <String, Object?>{}
+              : <String, Object?>{'shop_id': shopId},
           auth: true,
         ),
       );
