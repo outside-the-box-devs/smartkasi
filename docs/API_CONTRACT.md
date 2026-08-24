@@ -32,6 +32,7 @@ assume it will appear.
 |---|---|---|
 | `GET /health` | 🟢 LIVE | |
 | `GET /me` · `PATCH /me` | 🟢 LIVE | Call `GET /me` right after Supabase sign-in. |
+| `PATCH /admin/users/{id}/role` | 🟢 LIVE | Admin only. The only way to change a role. Effective on the user's **next** token. |
 | `GET /shops` | 🟢 LIVE | Geo search. Pass `lat`/`lng` to get `distance_m`. |
 | `POST /shops` · `GET /shops/{id}` · `PATCH /shops/{id}` | 🟢 LIVE | |
 | `POST /shops/{id}/licence` | 🟢 LIVE | Manual admin verification in v1. |
@@ -62,8 +63,9 @@ assume it will appear.
 - **Build the screen. Do not build the logic.** A stub's shape is contractual;
   its values are not.
 - Do not write a state machine that waits for a stub status to change. It won't.
-- Do not demo a flow whose payoff depends on a stub. The delivery tracking
-  screen can be shown; "watch the courier arrive" cannot.
+- Do not demo a flow whose payoff depends on a stub. Delivery is no longer one
+  of them — request through handover is real. "Watch the courier move on a map"
+  is still off the table, by design rather than by omission: see § Route privacy.
 - Every stub returns HTTP `200`/`202` with valid data — you will not get an
   error telling you it's fake. Check this table.
 
@@ -156,8 +158,18 @@ carry the password into anything real.
 | `customer` | Browse, search, order, track own orders |
 | `shop_owner` | Everything for shops they own, plus staff management |
 | `shop_staff` | Sell, sync; inventory and voids only if flagged |
-| `courier` | Courier job endpoints (all STUB in v1) |
+| `courier` | Courier job endpoints. LIVE since the delivery work landed |
 | `admin` | Everything, incl. licence verification |
+
+**Where the role comes from.** `profiles.role` is the source of truth. It becomes
+the `app_metadata.role` claim through `public.custom_access_token_hook`, which
+Supabase calls every time it mints a token — the claim is computed from the row,
+not copied to it, so the two cannot drift apart.
+
+The one thing to design around: a change takes effect on the user's **next**
+token. An access token already in a phone's memory keeps the old role until it
+expires or is refreshed (1 hour). Treat role changes as eventually consistent,
+and do not use one as a way to revoke access immediately.
 
 Endpoints marked `security: []` in the spec are public — shop directory,
 product catalog, search, flyers. The customer app can render its browse
@@ -310,29 +322,87 @@ Listed so nobody spends tomorrow looking for them.
 
 ---
 
-## 9. Open questions for the team
+## 9. Decisions
 
-These affect client code. Answer them before Sunday, not during integration.
+These were open questions. They are now decided, with the reasoning, so that a
+client author never has to guess and never has to ask twice. Reopening one is a
+product decision — say so in the tracker, do not work around it in a client.
 
-1. **Service fee constants.** The formula is
-   `base + per_extra_shop × (shops − 1) + per_km × ceil(km)`. The API uses
-   R10 / R5 / R1.50. Are those the numbers for the demo?
-2. **Radius cap for a multi-shop basket.** The spec errors with
-   `SHOPS_TOO_FAR_APART` — at what distance? 2 km is assumed.
-3. **Who verifies trading licences during the demo?** Currently a manual admin
-   action, and there is no admin UI for it yet. A seeded pre-verified shop is
-   the likely answer.
-4. **Barcode format.** Assumed EAN-13/UPC as a plain string. If the scanner
-   emits check digits or prefixes differently, say so now — it changes the
-   catalog key.
-5. **Does the POS app support multiple cashiers per till?** `cashier_id` is on
-   every sale but there is no shift/till-session concept.
-6. **Courier payout share.** A courier is paid `FEE_COURIER_SHARE_PCT` of the
-   order's service fee, currently 80%, fixed at the moment delivery is
-   requested. The remainder is the platform cut. Both numbers are placeholders
-   picked to make the demo add up — confirm them.
+### 9.1 Service fee constants — DECIDED 2026-08-24
+
+`service_fee = base + per_extra_shop × (shops − 1) + per_km × ceil(km)`
+
+| Constant | Value |
+|---|---|
+| base | **R18.00** |
+| per extra shop | **R6.00** |
+| per km | **R3.50** |
+| courier share | **75%** of the service fee, fixed when delivery is requested |
+
+One shop, 1 km: R21.50 — courier R16.13, platform R5.37.
+Two shops, 2 km: R31.00 — courier R23.25, platform R7.75.
+
+The previous R10 / R5 / R1.50 at an 80% share paid a courier **R9.20** for what
+is roughly a half-hour round trip on foot: about R18–22 an hour, below minimum
+wage, for a job that involves carrying cash. The platform kept R2.30, which
+funds nothing. Courier supply "not existing as a pool in the township" is partly
+a pricing problem, and that was the price.
+
+R21.50 still sits under the R25–35 the national delivery apps charge, and on a
+typical basket the price-comparison saving offsets much of it — which is the
+actual pitch, not the delivery itself.
+
+**Still open:** a minimum courier payout floor, around R15. The percentage model
+pays least on short, cheap, single-shop orders, which are exactly the ones
+couriers already do not want. Tracked in issue #34.
+
+### 9.2 Radius cap for a multi-shop basket — DECIDED: 1500 m
+
+`SHOPS_TOO_FAR_APART` fires beyond **1500 m**, reduced from 2000 m.
+
+A foot or bicycle courier's default `max_radius_m` is 2000 m, and the courier
+covers the shop-to-shop spread **plus** the leg to the customer. A 2000 m spread
+can therefore build a route the assigned courier cannot reasonably walk. 1500 m
+keeps the worst case inside the radius the courier actually agreed to.
+
+### 9.3 Who verifies trading licences — DECIDED: platform, never self-service
+
+Verification stays behind the `admin` role and lives in the operator console.
+A shop owner submits; a human at SmartKasi approves or rejects with a reason.
+
+There is currently no endpoint that approves one — `POST /shops/{shopId}/licence`
+accepts a submission that nothing can act on. Tracked in issue #26, with the
+console itself in #27.
+
+The role half of this now exists: `PATCH /admin/users/{id}/role` is the only way
+to move somebody between apps, and it is admin-guarded for the same reason.
+
+### 9.4 Barcode format — DECIDED: EAN-13 canonical, normalise on write
+
+Store digits only, and treat **EAN-13 as canonical**: a 12-digit UPC-A is
+left-padded with a zero to 13. Normalise on write, at both `POST /products` and
+the barcode lookup.
+
+This is not cosmetic. The same physical product scans as UPC-A on one till and
+EAN-13 on another; without normalisation the global catalogue silently forks per
+shop, and cross-shop price comparison — the whole reason the catalogue is global
+and keyed on barcode — stops working for exactly the products that matter most.
+
+### 9.5 Multiple cashiers per till — DECIDED: no shift concept in v1
+
+`cashier_id` is stamped from the authenticated user on every sale, so sales are
+already attributed per person and `GET /shops/{id}/reports/daily` already buckets
+by the Africa/Johannesburg trading day.
+
+A shift or till-session concept is a **cash reconciliation** feature — "who was
+on the till when the float went short" — not a sales-attribution one. Real, but
+it belongs after a shop has more than one till, which no pilot shop does.
+
+### 9.6 Courier payout share — DECIDED
+
+Folded into 9.1: **75%**, fixed at the moment delivery is requested.
 
 ---
 
-*Questions → team channel. Do not silently work around the contract; a
-workaround in one client is a bug in two.*
+*Reopening a decision goes in the tracker. Do not silently work around the
+contract; a workaround in one client is a bug in two.*

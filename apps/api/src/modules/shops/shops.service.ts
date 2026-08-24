@@ -6,7 +6,12 @@ import { paginate } from '../../common/dto/pagination.dto';
 import { boxWhere, haversineM } from '../../common/geo';
 import { isOpenNow, timeToHHMM } from '../../common/time';
 import { ShopAccessService } from './shop-access.service';
-import { CreateShopDto, ListShopsQuery, SubmitLicenceDto, UpdateShopDto } from './dto';
+import {
+  CreateShopDto,
+  ListShopsQuery,
+  SubmitLicenceDto,
+  UpdateShopDto,
+} from './dto';
 import type { Prisma, Shop } from '../../generated/prisma/client';
 
 type ShopWithCount = Shop & { _count?: { shopProducts: number } };
@@ -51,10 +56,17 @@ export class ShopsService {
           take: q.per_page,
         }),
       ]);
-      return paginate(rows.map((r) => this.summary(r, null)), total, q);
+      return paginate(
+        rows.map((r) => this.summary(r, null)),
+        total,
+        q,
+      );
     }
 
-    const rows = await this.prisma.shop.findMany({ where, orderBy: { name: 'asc' } });
+    const rows = await this.prisma.shop.findMany({
+      where,
+      orderBy: { name: 'asc' },
+    });
 
     let withDistance = rows.map((r) => ({
       row: r,
@@ -64,11 +76,15 @@ export class ShopsService {
     // The bounding box over-selects the corners of the square; this trims it
     // back to an actual circle.
     if (hasPoint) {
-      withDistance = withDistance.filter((r) => (r.distance ?? 0) <= q.radius_m);
+      withDistance = withDistance.filter(
+        (r) => (r.distance ?? 0) <= q.radius_m,
+      );
       withDistance.sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
     }
     if (q.open_now) {
-      withDistance = withDistance.filter((r) => isOpenNow(r.row.opensAt, r.row.closesAt));
+      withDistance = withDistance.filter((r) =>
+        isOpenNow(r.row.opensAt, r.row.closesAt),
+      );
     }
 
     const page = withDistance.slice(q.offset, q.offset + q.per_page);
@@ -124,7 +140,8 @@ export class ShopsService {
 
   async update(user: AuthUser, shopId: string, dto: UpdateShopDto) {
     const perms = await this.access.require(user, shopId);
-    if (!perms.isOwner) throw ApiError.forbidden('Only the owner can change shop settings');
+    if (!perms.isOwner)
+      throw ApiError.forbidden('Only the owner can change shop settings');
 
     if (dto.accepts_orders === true) {
       const shop = await this.prisma.shop.findUnique({
@@ -135,7 +152,12 @@ export class ShopsService {
         throw ApiError.unprocessable(
           ApiErrorCode.LICENCE_NOT_VERIFIED,
           'A verified trading licence is required before this shop can accept orders',
-          [{ field: 'accepts_orders', issue: `licence_status is '${shop?.licenceStatus}'` }],
+          [
+            {
+              field: 'accepts_orders',
+              issue: `licence_status is '${shop?.licenceStatus}'`,
+            },
+          ],
         );
       }
     }
@@ -164,14 +186,17 @@ export class ShopsService {
 
   async submitLicence(user: AuthUser, shopId: string, dto: SubmitLicenceDto) {
     const perms = await this.access.require(user, shopId);
-    if (!perms.isOwner) throw ApiError.forbidden('Only the owner can submit a licence');
+    if (!perms.isOwner)
+      throw ApiError.forbidden('Only the owner can submit a licence');
 
     await this.prisma.shop.update({
       where: { id: shopId },
       data: {
         tradingLicenceNo: dto.trading_licence_no,
         licenceDocUrl: dto.licence_doc_url,
-        licenceExpiresAt: dto.licence_expires_at ? new Date(dto.licence_expires_at) : undefined,
+        licenceExpiresAt: dto.licence_expires_at
+          ? new Date(dto.licence_expires_at)
+          : undefined,
         licenceStatus: 'pending',
       },
     });
@@ -181,7 +206,11 @@ export class ShopsService {
 
   private async uniqueSlug(name: string): Promise<string> {
     const base =
-      name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'shop';
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 60) || 'shop';
     for (let i = 0; i < 50; i++) {
       const candidate = i === 0 ? base : `${base}-${i + 1}`;
       const clash = await this.prisma.shop.findUnique({
@@ -223,7 +252,8 @@ export class ShopsService {
       province: r.province,
       trading_licence_no: r.tradingLicenceNo,
       licence_status: r.licenceStatus,
-      licence_expires_at: r.licenceExpiresAt?.toISOString().slice(0, 10) ?? null,
+      licence_expires_at:
+        r.licenceExpiresAt?.toISOString().slice(0, 10) ?? null,
       opens_at: timeToHHMM(r.opensAt),
       closes_at: timeToHHMM(r.closesAt),
       is_active: r.isActive,

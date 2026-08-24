@@ -67,16 +67,34 @@ async function bootstrap(): Promise<void> {
   // Serve the hand-written contract, not a generated one. openapi.yaml is the
   // source of truth; if this warns, the contract file moved.
   try {
-    const specPath = join(process.cwd(), '..', '..', 'packages', 'contract', 'openapi.yaml');
-    const spec = parseYaml(readFileSync(specPath, 'utf8')) as Record<string, unknown>;
-    SwaggerModule.setup('docs', app, spec as never, { customSiteTitle: 'SmartKasi API' });
+    const specPath = join(
+      process.cwd(),
+      '..',
+      '..',
+      'packages',
+      'contract',
+      'openapi.yaml',
+    );
+    const spec = parseYaml(readFileSync(specPath, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    SwaggerModule.setup('docs', app, spec as never, {
+      customSiteTitle: 'SmartKasi API',
+    });
   } catch {
-    Logger.warn('packages/contract/openapi.yaml not found — /docs disabled', 'Bootstrap');
+    Logger.warn(
+      'packages/contract/openapi.yaml not found — /docs disabled',
+      'Bootstrap',
+    );
   }
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0');
-  Logger.log(`SmartKasi API on http://localhost:${port}/${prefix}`, 'Bootstrap');
+  Logger.log(
+    `SmartKasi API on http://localhost:${port}/${prefix}`,
+    'Bootstrap',
+  );
   Logger.log(`Contract docs on http://localhost:${port}/docs`, 'Bootstrap');
 }
 

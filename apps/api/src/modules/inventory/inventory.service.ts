@@ -5,9 +5,16 @@ import { paginate } from '../../common/dto/pagination.dto';
 import type { AuthUser } from '../../common/types/auth.types';
 import { ShopAccessService } from '../shops/shop-access.service';
 import {
-  AddInventoryItemDto, BulkUpsertInventoryDto, ListInventoryQuery, UpdateInventoryItemDto,
+  AddInventoryItemDto,
+  BulkUpsertInventoryDto,
+  ListInventoryQuery,
+  UpdateInventoryItemDto,
 } from './dto';
-import type { Prisma, Product, ShopProduct } from '../../generated/prisma/client';
+import type {
+  Prisma,
+  Product,
+  ShopProduct,
+} from '../../generated/prisma/client';
 
 type InventoryRow = ShopProduct & { product: Product };
 
@@ -49,7 +56,10 @@ export class InventoryService {
     const where: Prisma.ShopProductWhereInput = { shopId };
     if (q.q) {
       where.product = {
-        OR: [{ name: { contains: q.q, mode: 'insensitive' } }, { barcode: q.q }],
+        OR: [
+          { name: { contains: q.q, mode: 'insensitive' } },
+          { barcode: q.q },
+        ],
       };
     }
     if (q.updated_since) where.updatedAt = { gt: new Date(q.updated_since) };
@@ -92,7 +102,10 @@ export class InventoryService {
     const low = all.filter((r) => r.stockQty <= r.lowStockThreshold);
     return {
       data: low.map(presentInventory),
-      meta: { total: low.length, out_of_stock: low.filter((r) => r.stockQty <= 0).length },
+      meta: {
+        total: low.length,
+        out_of_stock: low.filter((r) => r.stockQty <= 0).length,
+      },
     };
   }
 
@@ -108,7 +121,12 @@ export class InventoryService {
         ApiErrorCode.ALREADY_STOCKED,
         'This shop already stocks that product — use PATCH to change it',
         409,
-        [{ field: 'product_id', issue: `existing shop_product ${existing.id}` }],
+        [
+          {
+            field: 'product_id',
+            issue: `existing shop_product ${existing.id}`,
+          },
+        ],
       );
     }
 
@@ -118,7 +136,8 @@ export class InventoryService {
           shopId,
           productId: dto.product_id,
           priceCents: BigInt(dto.price_cents),
-          costCents: dto.cost_cents === undefined ? null : BigInt(dto.cost_cents),
+          costCents:
+            dto.cost_cents === undefined ? null : BigInt(dto.cost_cents),
           stockQty: 0,
           lowStockThreshold: dto.low_stock_threshold,
         },
@@ -154,7 +173,12 @@ export class InventoryService {
    * the dashboard yesterday. A rejected stale write returns 409 carrying the
    * WINNING row, so the client overwrites locally instead of retrying forever.
    */
-  async update(user: AuthUser, shopId: string, shopProductId: string, dto: UpdateInventoryItemDto) {
+  async update(
+    user: AuthUser,
+    shopId: string,
+    shopProductId: string,
+    dto: UpdateInventoryItemDto,
+  ) {
     await this.access.requireInventoryRights(user, shopId);
 
     const current = await this.prisma.shopProduct.findFirst({
@@ -180,11 +204,15 @@ export class InventoryService {
       await tx.shopProduct.update({
         where: { id: shopProductId },
         data: {
-          priceCents: dto.price_cents === undefined ? undefined : BigInt(dto.price_cents),
-          costCents: dto.cost_cents === undefined ? undefined : BigInt(dto.cost_cents),
+          priceCents:
+            dto.price_cents === undefined ? undefined : BigInt(dto.price_cents),
+          costCents:
+            dto.cost_cents === undefined ? undefined : BigInt(dto.cost_cents),
           lowStockThreshold: dto.low_stock_threshold,
           isAvailable: dto.is_available,
-          clientUpdatedAt: dto.client_updated_at ? new Date(dto.client_updated_at) : undefined,
+          clientUpdatedAt: dto.client_updated_at
+            ? new Date(dto.client_updated_at)
+            : undefined,
         },
       });
 
@@ -211,7 +239,11 @@ export class InventoryService {
   }
 
   /** Offline flush. Per-item results, never all-or-nothing. */
-  async bulkUpsert(user: AuthUser, shopId: string, dto: BulkUpsertInventoryDto) {
+  async bulkUpsert(
+    user: AuthUser,
+    shopId: string,
+    dto: BulkUpsertInventoryDto,
+  ) {
     await this.access.requireInventoryRights(user, shopId);
 
     const results: Array<{
@@ -235,11 +267,18 @@ export class InventoryService {
             stock_qty: item.stock_qty ?? 0,
             low_stock_threshold: item.low_stock_threshold ?? 5,
           });
-          results.push({ product_id: item.product_id, status: 'created', shop_product_id: created.id });
+          results.push({
+            product_id: item.product_id,
+            status: 'created',
+            shop_product_id: created.id,
+          });
           continue;
         }
 
-        if (existing.clientUpdatedAt && new Date(item.client_updated_at) < existing.clientUpdatedAt) {
+        if (
+          existing.clientUpdatedAt &&
+          new Date(item.client_updated_at) < existing.clientUpdatedAt
+        ) {
           results.push({
             product_id: item.product_id,
             status: 'skipped_stale',
@@ -255,14 +294,19 @@ export class InventoryService {
           is_available: item.is_available,
           client_updated_at: item.client_updated_at,
         });
-        results.push({ product_id: item.product_id, status: 'updated', shop_product_id: existing.id });
+        results.push({
+          product_id: item.product_id,
+          status: 'updated',
+          shop_product_id: existing.id,
+        });
       } catch (err) {
         results.push({
           product_id: item.product_id,
           status: 'failed',
           shop_product_id: null,
           error: {
-            code: err instanceof ApiError ? err.code : ApiErrorCode.INTERNAL_ERROR,
+            code:
+              err instanceof ApiError ? err.code : ApiErrorCode.INTERNAL_ERROR,
             message: err instanceof Error ? err.message : 'Unknown error',
           },
         });

@@ -70,10 +70,18 @@ create table profiles (
 create index on profiles (role);
 create index profiles_home_point_idx on profiles (home_lat, home_lng);
 
--- Mirror role into the JWT so the API can authorise without a DB round trip.
--- (Supabase reads raw_app_meta_data into app_metadata on the access token.)
+-- THIS COLUMN IS THE SOURCE OF TRUTH FOR AUTHORISATION.
+--
+-- It reaches the JWT through the custom access token hook at the bottom of this
+-- file, which GoTrue calls every time it mints a token. The claim is COMPUTED,
+-- not mirrored, so this column and the token cannot drift apart: change the row
+-- and the next token the user is issued carries the new role.
+--
+-- "The next token" is the one caveat. An access token already in a phone's
+-- memory keeps the old role until it expires or is refreshed (jwt_expiry is
+-- 3600s in supabase/config.toml). Revoking a role is therefore not instant.
 comment on column profiles.role is
-  'Mirrored into auth.users.raw_app_meta_data->>''role'' by trigger; the API trusts the JWT claim and only reads this table for display.';
+  'Source of truth for authorisation. Reaches the JWT as app_metadata.role via public.custom_access_token_hook, computed at token-mint time. Changing this row takes effect on the user''s next token, not their current one.';
 
 -- =============================================================================
 -- SHOPS
@@ -550,3 +558,62 @@ create policy "courier reads own positions" on delivery_positions
   for all using (
     exists (select 1 from deliveries d where d.id = delivery_positions.delivery_id and d.courier_id = auth.uid())
   );
+
+-- =============================================================================
+-- CUSTOM ACCESS TOKEN HOOK
+--
+-- How profiles.role becomes the app_metadata.role claim the API authorises on.
+-- GoTrue calls this on every token mint (sign-in and refresh), so the claim is
+-- computed from the row rather than copied to it — see issue #21 for the bug
+-- that came from believing a mirroring trigger existed when none did.
+--
+-- Registering it is NOT done here. Local: supabase/config.toml
+-- [auth.hook.custom_access_token]. Remote: Dashboard > Authentication > Hooks,
+-- which is dashboard state no SQL file can capture — recorded in AGENTS.md § 5.
+-- =============================================================================
+
+create or replace function public.custom_access_token_hook(event jsonb)
+returns jsonb
+language plpgsql
+stable
+as $$
+declare
+  claims    jsonb;
+  app_meta  jsonb;
+  user_role text;
+begin
+  select p.role::text
+    into user_role
+    from public.profiles p
+   where p.id = (event->>'user_id')::uuid;
+
+  claims   := coalesce(event->'claims', '{}'::jsonb);
+  app_meta := coalesce(claims->'app_metadata', '{}'::jsonb)
+              || jsonb_build_object('role', coalesce(user_role, 'customer'));
+
+  return jsonb_set(event, '{claims}',
+                   claims || jsonb_build_object('app_metadata', app_meta));
+exception
+  -- A hook that raises blocks token issuance for EVERY user on the project.
+  -- Degrade to the claims GoTrue already built rather than locking everyone out;
+  -- the guard's own fallback is 'customer', so the failure mode is loss of
+  -- privilege, never a grant of one.
+  when others then
+    return event;
+end;
+$$;
+
+-- GoTrue executes the hook as supabase_auth_admin, which by default can reach
+-- neither the function nor the table it reads.
+grant usage   on schema public to supabase_auth_admin;
+grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
+grant select  on table public.profiles to supabase_auth_admin;
+
+-- Nobody else gets to run it. It is called by GoTrue, not by clients.
+revoke execute on function public.custom_access_token_hook(jsonb) from authenticated, anon, public;
+
+-- profiles has RLS enabled and only a self-access policy, so without this the
+-- hook's SELECT returns no row and every user silently authorises as
+-- 'customer'. That failure is invisible until a courier gets a 403.
+create policy "auth admin reads roles" on profiles
+  as permissive for select to supabase_auth_admin using (true);

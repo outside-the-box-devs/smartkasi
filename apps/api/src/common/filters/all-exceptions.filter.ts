@@ -27,7 +27,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
-    const requestId = (req.headers['x-request-id'] as string) ?? `req_${randomUUID().slice(0, 12)}`;
+    const requestId =
+      (req.headers['x-request-id'] as string) ??
+      `req_${randomUUID().slice(0, 12)}`;
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code: string = ApiErrorCode.INTERNAL_ERROR;
@@ -56,13 +58,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = body.message;
       }
 
-      if (status === HttpStatus.NOT_FOUND && code === ApiErrorCode.INTERNAL_ERROR) {
+      if (
+        status === HttpStatus.NOT_FOUND &&
+        code === ApiErrorCode.INTERNAL_ERROR
+      ) {
         code = ApiErrorCode.NOT_FOUND;
       }
-      if (status === HttpStatus.UNAUTHORIZED && code === ApiErrorCode.INTERNAL_ERROR) {
+      if (
+        status === HttpStatus.UNAUTHORIZED &&
+        code === ApiErrorCode.INTERNAL_ERROR
+      ) {
         code = ApiErrorCode.UNAUTHENTICATED;
       }
-      if (status === HttpStatus.FORBIDDEN && code === ApiErrorCode.INTERNAL_ERROR) {
+      if (
+        status === HttpStatus.FORBIDDEN &&
+        code === ApiErrorCode.INTERNAL_ERROR
+      ) {
         code = ApiErrorCode.FORBIDDEN;
       }
     } else {

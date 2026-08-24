@@ -44,7 +44,7 @@ cd apps/api
 npm run smoke:auth
 ```
 
-24 checks, ~2 seconds, exits non-zero on failure. Re-runnable — it generates a
+36 checks (9 public, 27 authenticated), ~2 seconds, exits non-zero on failure. Re-runnable — it generates a
 fresh `client_sale_id` each run, so it never collides with itself.
 
 Against a deployed instance:
@@ -53,7 +53,7 @@ Against a deployed instance:
 npm run smoke:auth -- --base https://your-api.up.railway.app/v1
 ```
 
-**This is the acceptance test for tomorrow.** If all 24 pass against the
+**This is the acceptance test for tomorrow.** If all 36 pass against the
 deployed URL, the backend is done and you can hand the URL to the client team.
 
 ### Use `smoke:auth`, not `smoke`

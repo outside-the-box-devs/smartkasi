@@ -24,7 +24,12 @@ export interface StoredQuote {
     shopName: string;
     distanceM: number;
     subtotalCents: number;
-    items: Array<{ productId: string; name: string; qty: number; unitPriceCents: number }>;
+    items: Array<{
+      productId: string;
+      name: string;
+      qty: number;
+      unitPriceCents: number;
+    }>;
   }>;
 }
 
@@ -57,8 +62,11 @@ export class QuoteService {
   async quote(customerId: string, dto: QuoteRequestDto) {
     const shopIds = [...new Set(dto.items.map((i) => i.shop_id))];
 
-    const shops = await this.prisma.shop.findMany({ where: { id: { in: shopIds } } });
-    if (shops.length !== shopIds.length) throw ApiError.notFound('One or more shops');
+    const shops = await this.prisma.shop.findMany({
+      where: { id: { in: shopIds } },
+    });
+    if (shops.length !== shopIds.length)
+      throw ApiError.notFound('One or more shops');
 
     const notAccepting = shops.filter((s) => !s.acceptsOrders);
     if (notAccepting.length) {
@@ -68,11 +76,14 @@ export class QuoteService {
       );
     }
 
-    const hasDropoff = dto.dropoff_lat !== undefined && dto.dropoff_lng !== undefined;
+    const hasDropoff =
+      dto.dropoff_lat !== undefined && dto.dropoff_lng !== undefined;
     const distanceByShop = new Map<string, number>(
       shops.map((s) => [
         s.id,
-        hasDropoff ? haversineM(dto.dropoff_lat!, dto.dropoff_lng!, s.lat, s.lng) : 0,
+        hasDropoff
+          ? haversineM(dto.dropoff_lat!, dto.dropoff_lng!, s.lat, s.lng)
+          : 0,
       ]),
     );
     const maxDistance = Math.max(0, ...distanceByShop.values());
@@ -94,8 +105,11 @@ export class QuoteService {
       },
       include: { product: { select: { name: true } } },
     });
-    const stockKey = (shopId: string, productId: string) => `${shopId}:${productId}`;
-    const stockMap = new Map(stock.map((s) => [stockKey(s.shopId, s.productId), s]));
+    const stockKey = (shopId: string, productId: string) =>
+      `${shopId}:${productId}`;
+    const stockMap = new Map(
+      stock.map((s) => [stockKey(s.shopId, s.productId), s]),
+    );
 
     const legs: StoredQuote['legs'] = [];
     const presentedLegs: unknown[] = [];
@@ -161,13 +175,19 @@ export class QuoteService {
 
     if (dto.fulfilment_type === FulfilmentType.delivery) {
       serviceFee += fees.baseCents;
-      breakdown.push({ label: 'Base service fee', amount_cents: fees.baseCents });
+      breakdown.push({
+        label: 'Base service fee',
+        amount_cents: fees.baseCents,
+      });
 
       const extraShops = Math.max(0, shops.length - 1);
       if (extraShops > 0) {
         const amount = fees.perExtraShopCents * extraShops;
         serviceFee += amount;
-        breakdown.push({ label: `Extra shop (${extraShops})`, amount_cents: amount });
+        breakdown.push({
+          label: `Extra shop (${extraShops})`,
+          amount_cents: amount,
+        });
       }
 
       const km = Math.ceil(maxDistance / 1000);
@@ -215,7 +235,11 @@ export class QuoteService {
   /** Single-use: consuming a quote removes it, so a double-submit 409s. */
   consume(quoteId: string, customerId: string): StoredQuote {
     const quote = this.quotes.get(quoteId);
-    if (!quote || quote.expiresAt < Date.now() || quote.customerId !== customerId) {
+    if (
+      !quote ||
+      quote.expiresAt < Date.now() ||
+      quote.customerId !== customerId
+    ) {
       throw new ApiError(
         ApiErrorCode.QUOTE_EXPIRED,
         'This quote has expired — re-quote and show the customer the new total',

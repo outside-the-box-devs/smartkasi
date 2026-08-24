@@ -42,7 +42,11 @@ export interface BoundingBox {
  * Longitude degrees shrink with latitude, hence the cos() term — at Soweto's
  * -26.2 that is about a 10% difference, which matters at a 2 km radius.
  */
-export function boundingBox(lat: number, lng: number, radiusM: number): BoundingBox {
+export function boundingBox(
+  lat: number,
+  lng: number,
+  radiusM: number,
+): BoundingBox {
   const latDelta = (radiusM / EARTH_RADIUS_M) * (180 / Math.PI);
   const cos = Math.max(Math.cos(toRad(lat)), 1e-6);
   const lngDelta = latDelta / cos;

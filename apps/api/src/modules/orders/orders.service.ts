@@ -6,7 +6,11 @@ import { paginate, PaginationQuery } from '../../common/dto/pagination.dto';
 import type { AuthUser } from '../../common/types/auth.types';
 import { ShopAccessService } from '../shops/shop-access.service';
 import {
-  AcceptLegDto, CancelOrderDto, CreateOrderDto, ListOrdersQuery, RejectLegDto,
+  AcceptLegDto,
+  CancelOrderDto,
+  CreateOrderDto,
+  ListOrdersQuery,
+  RejectLegDto,
 } from './dto';
 import { QuoteService } from './quote.service';
 import {
@@ -15,7 +19,12 @@ import {
   type CustomerDeliveryInput,
 } from '../delivery/delivery.presenter';
 import type {
-  Order, OrderItem, OrderShop, OrderShopStatus, OrderStatus, Shop,
+  Order,
+  OrderItem,
+  OrderShop,
+  OrderShopStatus,
+  OrderStatus,
+  Shop,
 } from '../../generated/prisma/client';
 
 type LegWithItems = OrderShop & { shop: Shop; items: OrderItem[] };
@@ -116,7 +125,11 @@ export class OrdersService {
       }),
     ]);
 
-    return paginate(rows.map((r) => this.present(r)), total, q);
+    return paginate(
+      rows.map((r) => this.present(r)),
+      total,
+      q,
+    );
   }
 
   async get(user: AuthUser, orderId: string) {
@@ -135,9 +148,13 @@ export class OrdersService {
       const asStaff = involved
         ? true
         : (await this.prisma.shopStaff.count({
-            where: { userId: user.id, shopId: { in: row.legs.map((l) => l.shopId) } },
+            where: {
+              userId: user.id,
+              shopId: { in: row.legs.map((l) => l.shopId) },
+            },
           })) > 0;
-      if (!involved && !asStaff) throw ApiError.forbidden('This order is not yours');
+      if (!involved && !asStaff)
+        throw ApiError.forbidden('This order is not yours');
     }
 
     return this.present(row);
@@ -163,10 +180,17 @@ export class OrdersService {
     await this.prisma.$transaction([
       this.prisma.order.update({
         where: { id: orderId },
-        data: { status: 'cancelled', cancelledAt: new Date(), cancellationReason: dto.reason },
+        data: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancellationReason: dto.reason,
+        },
       }),
       this.prisma.orderShop.updateMany({
-        where: { orderId, status: { in: ['pending', 'accepted', 'preparing'] } },
+        where: {
+          orderId,
+          status: { in: ['pending', 'accepted', 'preparing'] },
+        },
         data: { status: 'cancelled' },
       }),
     ]);
@@ -215,7 +239,12 @@ export class OrdersService {
     return paginate(data, total, q as PaginationQuery);
   }
 
-  async acceptLeg(user: AuthUser, orderId: string, shopId: string, dto: AcceptLegDto) {
+  async acceptLeg(
+    user: AuthUser,
+    orderId: string,
+    shopId: string,
+    dto: AcceptLegDto,
+  ) {
     await this.access.require(user, shopId);
     const leg = await this.requireLeg(orderId, shopId);
 
@@ -236,7 +265,9 @@ export class OrdersService {
           });
         }
       } else {
-        const items = await tx.orderItem.findMany({ where: { orderShopId: leg.id } });
+        const items = await tx.orderItem.findMany({
+          where: { orderShopId: leg.id },
+        });
         for (const item of items) {
           await tx.orderItem.update({
             where: { id: item.id },
@@ -264,7 +295,12 @@ export class OrdersService {
     return this.legView(leg.id);
   }
 
-  async rejectLeg(user: AuthUser, orderId: string, shopId: string, dto: RejectLegDto) {
+  async rejectLeg(
+    user: AuthUser,
+    orderId: string,
+    shopId: string,
+    dto: RejectLegDto,
+  ) {
     await this.access.require(user, shopId);
     const leg = await this.requireLeg(orderId, shopId);
 
@@ -314,7 +350,8 @@ export class OrdersService {
     let status: OrderStatus;
     if (live.length === 0) status = 'rejected';
     else if (statuses.includes('pending')) status = 'placed';
-    else if (live.every((s) => s === 'ready' || s === 'collected')) status = 'ready';
+    else if (live.every((s) => s === 'ready' || s === 'collected'))
+      status = 'ready';
     else if (live.length < statuses.length) status = 'partially_accepted';
     else status = 'accepted';
 
@@ -333,7 +370,9 @@ export class OrdersService {
         status,
         subtotalCents: subtotal,
         totalCents:
-          subtotal + (order?.serviceFeeCents ?? BigInt(0)) + (order?.deliveryFeeCents ?? BigInt(0)),
+          subtotal +
+          (order?.serviceFeeCents ?? BigInt(0)) +
+          (order?.deliveryFeeCents ?? BigInt(0)),
       },
     });
   }

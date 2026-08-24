@@ -53,10 +53,16 @@ begin;
 -- on conflict (id) do nothing;
 
 -- The auth trigger creates profiles; set roles and details explicitly.
+-- Since 20260824000001_role_claim_sync, handle_new_auth_user() already takes the
+-- role from the app_metadata that seed-users.mjs sends, so these role values are
+-- normally a no-op. They are kept because this file must also work against a
+-- database seeded some other way — and because they now flow back out to the JWT
+-- through t_profiles_role_to_auth, which is worth exercising on every seed.
 update profiles set role = 'shop_owner', full_name = 'Thoko Ndlovu',  phone = '+27821234567' where id = '11111111-0000-4000-8000-000000000001';
 update profiles set role = 'shop_owner', full_name = 'Sipho Dlamini', phone = '+27821234568' where id = '11111111-0000-4000-8000-000000000002';
 update profiles set role = 'shop_owner', full_name = 'Naledi Khumalo',phone = '+27821234569' where id = '11111111-0000-4000-8000-000000000003';
 update profiles set role = 'courier',    full_name = 'Thabo Mahlangu',phone = '+27821234570' where id = '33333333-0000-4000-8000-000000000003';
+update profiles set role = 'admin',      full_name = 'Ayanda Mokwena',phone = '+27821234572' where id = '44444444-0000-4000-8000-000000000004';
 update profiles
    set role = 'customer', full_name = 'Lerato Mokoena', phone = '+27821234571',
        home_address = '77 Mooki St, Orlando East',

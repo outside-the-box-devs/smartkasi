@@ -43,6 +43,7 @@ const IDS = {
   owner2: '11111111-0000-4000-8000-000000000002',   // Bra Sipho
   customer: '22222222-0000-4000-8000-000000000002', // Lerato
   courier: '33333333-0000-4000-8000-000000000003',  // Thabo, bicycle, verified
+  admin: '44444444-0000-4000-8000-000000000004',    // Ayanda, platform operator
   shop1: '7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa',
   shop2: '7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb',
   shop3: '7b0e1c2a-3333-4a3b-9c11-cccccccccccc',    // advertising_only
@@ -57,12 +58,23 @@ const TOKENS = {
   owner2: process.env.OWNER2_TOKEN ?? mint(IDS.owner2, 'shop_owner'),
   customer: process.env.CUSTOMER_TOKEN ?? mint(IDS.customer, 'customer'),
   courier: process.env.COURIER_TOKEN ?? mint(IDS.courier, 'courier'),
+  admin: process.env.ADMIN_TOKEN ?? mint(IDS.admin, 'admin'),
 };
+
+// True when the tokens came from GoTrue rather than from mint(). Only real
+// tokens exercise the custom access token hook, so the claim checks announce
+// which mode they ran in instead of quietly proving nothing.
+// Declared here, not beside claimRole(): the role checks run long before the
+// helper section, and reading a const in its TDZ throws.
+const REAL_TOKENS = Boolean(process.env.COURIER_TOKEN);
 
 // ---- tiny test harness ----------------------------------------------------
 
 let passed = 0;
 const failures = [];
+// Declared up here rather than beside pgOne: the role checks run before the
+// helper definitions are reached, and reading a `let` in its TDZ throws.
+let pgClient;
 const c = process.stdout.isTTY
   ? { g: '\x1b[32m', r: '\x1b[31m', d: '\x1b[2m', y: '\x1b[33m', x: '\x1b[0m' }
   : { g: '', r: '', d: '', y: '', x: '' };
@@ -159,10 +171,10 @@ await check('health returns ok', () => {
 if (!TOKENS.owner1 && !PUBLIC_ONLY) {
   console.log(`\n${c.y}No way to authenticate — stopping before the authenticated checks.${c.x}`);
   console.log('');
-  console.log('  To run the 9 public checks right now:');
+  console.log('  To run just the public checks right now:');
   console.log(`    ${c.d}npm run smoke -- --public-only${c.x}`);
   console.log('');
-  console.log('  For the full 24, this script needs to present a token the API accepts.');
+  console.log('  For the full suite, this script needs to present a token the API accepts.');
   console.log('  It has to match however the API itself is configured:');
   console.log('');
   console.log(`    ${c.d}Legacy Supabase (HS256 shared secret)${c.x}`);
@@ -256,6 +268,149 @@ await checkAuth('owner token resolves the profile', async () => {
   expect(r.body.shop_ids.includes(IDS.shop1), 'owner is not linked to Mama Thoko\'s');
   return `${r.body.full_name}, ${r.body.shop_ids.length} shop`;
 });
+
+
+// --- the role claim --------------------------------------------------------
+// These only mean something under `npm run smoke:auth`. mint() hard-codes the
+// role into self-signed HS256 tokens, so plain `npm run smoke` would pass the
+// first two with the hook switched off entirely.
+await checkAuth('courier token carries the courier claim', async () => {
+  const role = claimRole(TOKENS.courier);
+  expect(role === 'courier', `app_metadata.role is ${role ?? 'absent'} — is the custom access token hook registered?`);
+  return REAL_TOKENS ? 'from the hook' : 'self-signed, proves nothing';
+});
+
+await checkAuth('the claim is what authorises, not the profile row', async () => {
+  const denied = await api('/courier/jobs', { token: TOKENS.customer });
+  expect(denied.status === 403, `customer got ${denied.status} on the job board`);
+  const allowed = await api('/courier/jobs', { token: TOKENS.courier });
+  expect(allowed.status === 200, `courier got ${allowed.status} on the job board`);
+  return '403 for the customer, 200 for the courier';
+});
+
+// The actual regression test for issue #21: change the row, and the NEXT token
+// must carry the new role. Reverts itself, but it does write — like the POS
+// batch and the order below it, this suite is for demo data only.
+await checkAuth('a role change reaches the next token', async () => {
+  if (!REAL_TOKENS) return 'skipped — needs smoke:auth, self-signed tokens cannot show this';
+
+  const elevate = await api(`/admin/users/${IDS.customer}/role`, {
+    method: 'PATCH', token: TOKENS.admin, body: { role: 'courier' },
+  });
+  expect(elevate.status === 200, `elevate returned ${elevate.status} ${elevate.body?.error?.code ?? ''}`);
+
+  try {
+    const fresh = await signIn('customer@smartkasi.test');
+    expect(claimRole(fresh) === 'courier', `new token still says ${claimRole(fresh)} — the hook is not reading profiles.role`);
+
+    // The role gate must now let them through. It is NOT a 200: the job board
+    // also needs a `couriers` row, and Lerato has none — being given the role
+    // does not register you as a courier. Asserting 200 here would be asserting
+    // that the two are the same thing, which is exactly what they are not.
+    const jobs = await api('/courier/jobs', { token: fresh });
+    expect(
+      jobs.status !== 401,
+      `elevated user got 401 — the new claim is not being accepted at all`,
+    );
+    expect(
+      /not registered as a courier/i.test(jobs.body?.error?.message ?? ''),
+      `expected to clear the role gate and stop at the courier-record check, got ${jobs.status} ${jobs.body?.error?.message ?? ''}`,
+    );
+  } finally {
+    await api(`/admin/users/${IDS.customer}/role`, {
+      method: 'PATCH', token: TOKENS.admin, body: { role: 'customer' },
+    });
+  }
+
+  const reverted = await signIn('customer@smartkasi.test');
+  expect(claimRole(reverted) === 'customer', `revert failed, still ${claimRole(reverted)}`);
+  return 'customer -> courier -> customer, claim followed each time';
+});
+// --- role claims ------------------------------------------------------------
+// Regression cover for the 2026-08-24 fix. profiles.role was documented as
+// being mirrored into the JWT and nothing ever did it, so every user who signed
+// up through the app was a customer permanently and the courier and shop-owner
+// apps had no front door. It stayed invisible because every other check here
+// runs as a pre-provisioned demo user whose claim was set by hand at seed time.
+//
+// Three things have to hold and each can break on its own:
+//   1. t_profiles_role_to_auth keeps auth.users.raw_app_meta_data in step
+//   2. custom_access_token_hook puts the role on the FIRST token, not the second
+//   3. a change to profiles.role reaches the next issued token
+//
+// If these start failing, check the hook is still switched on before you touch
+// the SQL: supabase/config.toml locally, Dashboard -> Authentication -> Hooks
+// on the hosted project. Disabling it degrades 2 without touching 1 or 3.
+
+console.log('\nRole claims');
+
+const SB_URL = process.env.SUPABASE_URL?.replace(/\/$/, '');
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const PG_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+const probe = { id: randomUUID(), email: `smoke-role-${Date.now()}@smartkasi.test`, password: 'Password123!' };
+
+await checkRole('a fresh courier gets the role on their FIRST token', async () => {
+  const created = await gotrue('/auth/v1/admin/users', {
+    method: 'POST',
+    body: {
+      id: probe.id,
+      email: probe.email,
+      password: probe.password,
+      email_confirm: true,
+      user_metadata: { full_name: 'Smoke Courier' },
+      app_metadata: { role: 'courier' },
+    },
+  });
+  expect(created.status === 200 || created.status === 201, `admin create returned ${created.status} ${created.raw.slice(0, 160)}`);
+
+  const token = await signIn(probe.email, probe.password);
+  const role = claimRole(token);
+  // Not "after a refresh" — this is the very first access token GoTrue issues.
+  expect(role === 'courier', `first token says role=${role ?? '(absent)'}. If it says customer, the custom access token hook is not enabled or not reachable by supabase_auth_admin.`);
+
+  const me = await api('/me', { token });
+  expect(me.status === 200, `/me returned ${me.status}`);
+  expect(me.body.role === 'courier', `/me says ${me.body.role}`);
+  return 'courier on token #1';
+});
+
+await checkRole('the signup trigger mirrors role into auth.users', async () => {
+  const claim = await pgOne(
+    `select raw_app_meta_data->>'role' as role from auth.users where id = $1`,
+    [probe.id],
+  );
+  expect(claim?.role === 'courier', `raw_app_meta_data.role is ${claim?.role ?? '(absent)'} — t_profiles_role_to_auth is missing or was dropped`);
+
+  const profile = await pgOne(`select role from public.profiles where id = $1`, [probe.id]);
+  expect(profile?.role === 'courier', `profiles.role is ${profile?.role ?? '(no row)'} — handle_new_auth_user is not reading raw_app_meta_data`);
+  return 'profiles.role and the claim agree';
+}, { needsDb: true });
+
+await checkRole('changing profiles.role reaches the next issued token', async () => {
+  await pgOne(`update public.profiles set role = 'shop_owner' where id = $1 returning role`, [probe.id]);
+
+  const claim = await pgOne(
+    `select raw_app_meta_data->>'role' as role from auth.users where id = $1`,
+    [probe.id],
+  );
+  expect(claim?.role === 'shop_owner', `the trigger did not mirror the update — raw_app_meta_data.role is still ${claim?.role}`);
+
+  const token = await signIn(probe.email, probe.password);
+  const role = claimRole(token);
+  expect(role === 'shop_owner', `the new token still says ${role} — a role change is not reaching the JWT`);
+
+  const me = await api('/me', { token });
+  expect(me.body?.role === 'shop_owner', `/me says ${me.body?.role}`);
+  return 'courier -> shop_owner, no refresh needed';
+}, { needsDb: true });
+
+// The probe user is disposable and would otherwise accumulate on every run.
+// Deleting it cascades the profile row. An open pg client keeps the event loop
+// alive, so close it here rather than at exit.
+if (SB_URL && SB_KEY && !PUBLIC_ONLY) {
+  await gotrue(`/auth/v1/admin/users/${probe.id}`, { method: 'DELETE' }).catch(() => {});
+}
+await pgEnd();
 
 console.log('\nPOS & offline sync');
 const saleId = randomUUID();
@@ -438,8 +593,12 @@ await checkAuth('the job reaches the courier board', async () => {
   expect(job.total_distance_m > 0, 'total_distance_m is 0 — the route was never measured');
 
   const o = await api(`/orders/${orderId}`, { token: TOKENS.customer });
-  const expected = Math.round((o.body.service_fee_cents * 80) / 100);
-  expect(job.payout_cents === expected, `payout ${job.payout_cents}, expected ${expected} (80% of the service fee)`);
+  // Courier share, FEE_COURIER_SHARE_PCT in src/config/configuration.ts. Went
+  // 80 -> 75 with the fee model in issue #34; read it from the env rather than
+  // hardcoding, so the next change to it does not fail this check spuriously.
+  const sharePct = Number(process.env.FEE_COURIER_SHARE_PCT ?? 75);
+  const expected = Math.round((o.body.service_fee_cents * sharePct) / 100);
+  expect(job.payout_cents === expected, `payout ${job.payout_cents}, expected ${expected} (${sharePct}% of the service fee)`);
   payoutCents = job.payout_cents;
   return `${job.order_number}, ${job.total_distance_m}m, pays ${rands(job.payout_cents)}`;
 });
@@ -561,6 +720,70 @@ for (const f of failures) console.log(`  ${c.r}·${c.x} ${f.name}\n    ${f.messa
 console.log('');
 process.exit(1);
 
+// ---- role-claim helpers ---------------------------------------------------
+
+/**
+ * Like checkAuth, but these need the service-role key (to provision a throwaway
+ * user) and sometimes a direct Postgres connection. Missing credentials is a
+ * skip, not a failure — the same run has to work in CI without secrets. It says
+ * which variable is missing, because a silent skip here is how the original bug
+ * survived.
+ */
+async function checkRole(name, fn, { needsDb = false } = {}) {
+  const missing = [];
+  if (!SB_URL) missing.push('SUPABASE_URL');
+  if (!SB_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (needsDb && !PG_URL) missing.push('DIRECT_URL');
+
+  if (PUBLIC_ONLY || missing.length) {
+    skipped++;
+    const why = PUBLIC_ONLY ? 'needs a token' : `needs ${missing.join(' + ')}`;
+    console.log(`  ${c.y}SKIP${c.x}  ${name}  ${c.d}(${why})${c.x}`);
+    return;
+  }
+  return check(name, fn);
+}
+
+async function gotrue(path, { method = 'GET', body } = {}) {
+  const res = await fetch(`${SB_URL}${path}`, {
+    method,
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const raw = await res.text();
+  let json;
+  try { json = raw ? JSON.parse(raw) : null; } catch { json = null; }
+  return { status: res.status, body: json, raw };
+}
+
+// signIn() and claimRole() live further down — one copy, shared by both the
+// role-claim checks above and the admin-endpoint checks.
+
+/** One row, or undefined. Opens the connection on first use. */
+async function pgOne(sql, params) {
+  if (!pgClient) {
+    const { default: pg } = await import('pg');
+    pgClient = new pg.Client({
+      connectionString: PG_URL,
+      ssl: /supabase\.(co|com)/.test(PG_URL) ? { rejectUnauthorized: false } : undefined,
+    });
+    await pgClient.connect();
+  }
+  const res = await pgClient.query(sql, params);
+  return res.rows[0];
+}
+
+async function pgEnd() {
+  if (!pgClient) return;
+  const client = pgClient;
+  pgClient = undefined;
+  await client.end().catch(() => {});
+}
+
 // ---- helpers --------------------------------------------------------------
 
 function argValue(flag) {
@@ -592,6 +815,42 @@ function loadDotEnv(path) {
   }
 }
 
+
+// ---- role claim helpers ---------------------------------------------------
+
+
+/** The role the API will actually authorise on — read from the token, not /me. */
+function claimRole(token) {
+  if (!token) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return payload?.app_metadata?.role;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Sign a demo user in for a FRESH token. The point is the round trip: a role
+ * change only shows up in a newly minted token, so re-reading an existing one
+ * would pass whether the hook works or not.
+ */
+async function signIn(email, password = 'Password123!') {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing from apps/api/.env');
+
+  const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.access_token) {
+    throw new Error(`sign-in for ${email} failed (${res.status}) — run \`npm run db:users\``);
+  }
+  return body.access_token;
+}
 function mint(sub, role) {
   if (!SECRET) return undefined;
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');

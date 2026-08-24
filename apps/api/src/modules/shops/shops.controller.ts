@@ -1,8 +1,23 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth.types';
-import { CreateShopDto, ListShopsQuery, SubmitLicenceDto, UpdateShopDto } from './dto';
+import {
+  CreateShopDto,
+  ListShopsQuery,
+  SubmitLicenceDto,
+  UpdateShopDto,
+} from './dto';
 import { ShopsService } from './shops.service';
 
 @Controller('shops')

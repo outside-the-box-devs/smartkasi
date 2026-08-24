@@ -29,7 +29,8 @@ export class ShopAccessService {
       where: { id: shopId, ownerId: user.id },
       select: { id: true },
     });
-    if (owned) return { isOwner: true, canManageInventory: true, canVoidSales: true };
+    if (owned)
+      return { isOwner: true, canManageInventory: true, canVoidSales: true };
 
     const staff = await this.prisma.shopStaff.findUnique({
       where: { shopId_userId: { shopId, userId: user.id } },
@@ -47,7 +48,9 @@ export class ShopAccessService {
   async requireInventoryRights(user: AuthUser, shopId: string): Promise<void> {
     const perms = await this.require(user, shopId);
     if (!perms.canManageInventory) {
-      throw ApiError.forbidden("You are not allowed to change this shop's inventory");
+      throw ApiError.forbidden(
+        "You are not allowed to change this shop's inventory",
+      );
     }
   }
 }

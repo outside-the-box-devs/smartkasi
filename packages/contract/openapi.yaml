@@ -137,6 +137,8 @@ tags:
     description: Health and metadata.
   - name: Me
     description: The authenticated user's own profile.
+  - name: Admin
+    description: Platform operator actions. Requires the admin role.
   - name: Shops
     description: Shop directory, geo search, onboarding, trading licence.
   - name: Catalog
@@ -199,8 +201,9 @@ paths:
       summary: "[LIVE] Get my profile"
       description: |
         Called on app start after Supabase sign-in. If the profile row does not
-        yet exist it is created from the JWT claims, so this doubles as
-        "complete registration".
+        yet exist it is created at the default role, so this doubles as
+        "complete registration". It does NOT take the role from the token —
+        `profiles.role` is the source of truth, not a copy of the claim.
       operationId: getMe
       x-smartkasi-status: LIVE
       responses:
@@ -236,6 +239,63 @@ paths:
               schema: { $ref: "#/components/schemas/Profile" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ===========================================================================
+  # ADMIN
+  # ===========================================================================
+  /admin/users/{userId}/role:
+    patch:
+      tags: [Admin]
+      summary: "[LIVE] Change a user's role"
+      description: |
+        The only way to move somebody between apps. `profiles.role` is what the
+        API authorises on: it becomes the `app_metadata.role` claim when Supabase
+        mints a token.
+
+        Takes effect on the user's **next** token, not their current one. An
+        access token already on a phone keeps the old role until it expires or is
+        refreshed, so this is not a revocation mechanism.
+
+        Elevation is deliberately never self-service — see § 9.3.
+      operationId: setUserRole
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [customer, shop_owner, shop_staff, courier, admin]
+      responses:
+        "200":
+          description: The updated profile, with the role it replaced.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  role: { type: string, enum: [customer, shop_owner, shop_staff, courier, admin] }
+                  previous_role: { type: string, enum: [customer, shop_owner, shop_staff, courier, admin] }
+                  full_name: { type: string }
+                  phone: { type: string, nullable: true }
+                  takes_effect:
+                    type: string
+                    example: "on the next token this user is issued"
+                  updated_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
   # SHOPS

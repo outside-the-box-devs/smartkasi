@@ -1,11 +1,24 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMinSize, IsArray, IsEnum, IsLatitude, IsLongitude, IsOptional,
-  IsString, IsUUID, MaxLength, Min, IsInt, ValidateNested,
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  IsInt,
+  ValidateNested,
 } from 'class-validator';
 import { PaginationQuery } from '../../common/dto/pagination.dto';
 
-export enum FulfilmentType { delivery = 'delivery', collection = 'collection' }
+export enum FulfilmentType {
+  delivery = 'delivery',
+  collection = 'collection',
+}
 
 export enum RejectReason {
   out_of_stock = 'out_of_stock',
@@ -26,7 +39,10 @@ export class QuoteRequestDto {
   @IsOptional() @Type(() => Number) @IsLatitude() dropoff_lat?: number;
   @IsOptional() @Type(() => Number) @IsLongitude() dropoff_lng?: number;
 
-  @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => OrderItemInputDto)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemInputDto)
   items: OrderItemInputDto[];
 }
 
@@ -52,7 +68,10 @@ export class FulfilledItemDto {
 }
 
 export class AcceptLegDto {
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => FulfilledItemDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FulfilledItemDto)
   fulfilled?: FulfilledItemDto[];
 }
 

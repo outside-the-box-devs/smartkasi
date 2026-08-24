@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { IsBoolean, IsDateString, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { PrismaService } from '../../prisma.service';
 import { ApiError } from '../../common/errors/api-error';
@@ -60,7 +67,9 @@ export class FlyersService {
 
   async remove(user: AuthUser, shopId: string, flyerId: string) {
     await this.access.require(user, shopId);
-    const deleted = await this.prisma.flyer.deleteMany({ where: { id: flyerId, shopId } });
+    const deleted = await this.prisma.flyer.deleteMany({
+      where: { id: flyerId, shopId },
+    });
     if (deleted.count === 0) throw ApiError.notFound('Flyer');
   }
 

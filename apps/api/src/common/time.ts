@@ -44,11 +44,16 @@ export function timeToHHMM(value: Date | null): string | null {
   return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
 }
 
-export function isOpenNow(opensAt: Date | null, closesAt: Date | null): boolean {
+export function isOpenNow(
+  opensAt: Date | null,
+  closesAt: Date | null,
+): boolean {
   const open = timeToMinutes(opensAt);
   const close = timeToMinutes(closesAt);
   if (open === null || close === null) return true; // no hours set => always open
   const now = saMinutesNow();
   // Handles a shop that closes after midnight.
-  return close >= open ? now >= open && now <= close : now >= open || now <= close;
+  return close >= open
+    ? now >= open && now <= close
+    : now >= open || now <= close;
 }

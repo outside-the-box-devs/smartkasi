@@ -25,7 +25,8 @@ export class SearchService {
     const hasPoint = q.lat !== undefined && q.lng !== undefined;
 
     const shopWhere: Prisma.ShopWhereInput = { isActive: true };
-    if (hasPoint) Object.assign(shopWhere, boxWhere(q.lat!, q.lng!, q.radius_m));
+    if (hasPoint)
+      Object.assign(shopWhere, boxWhere(q.lat!, q.lng!, q.radius_m));
 
     const where: Prisma.ShopProductWhereInput = {
       isAvailable: true,
@@ -49,7 +50,9 @@ export class SearchService {
     const offers = rows
       .map((r) => ({
         row: r,
-        distance: hasPoint ? haversineM(q.lat!, q.lng!, r.shop.lat, r.shop.lng) : null,
+        distance: hasPoint
+          ? haversineM(q.lat!, q.lng!, r.shop.lat, r.shop.lng)
+          : null,
       }))
       .filter((o) => !hasPoint || (o.distance ?? 0) <= q.radius_m);
 
@@ -66,7 +69,8 @@ export class SearchService {
 
       const sorted = [...group].sort((a, b) =>
         q.sort === 'distance'
-          ? (a.distance ?? 0) - (b.distance ?? 0) || Number(a.row.priceCents) - Number(b.row.priceCents)
+          ? (a.distance ?? 0) - (b.distance ?? 0) ||
+            Number(a.row.priceCents) - Number(b.row.priceCents)
           : Number(a.row.priceCents) - Number(b.row.priceCents),
       );
 
@@ -85,7 +89,9 @@ export class SearchService {
           },
           price_stats: {
             offer_count: prices.length,
-            avg_price_cents: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+            avg_price_cents: Math.round(
+              prices.reduce((a, b) => a + b, 0) / prices.length,
+            ),
             min_price_cents: Math.min(...prices),
             max_price_cents: Math.max(...prices),
           },
@@ -104,6 +110,10 @@ export class SearchService {
     results.sort((a, b) => a.bestPrice - b.bestPrice);
 
     const page = results.slice(q.offset, q.offset + q.per_page);
-    return paginate(page.map((r) => r.payload), results.length, q);
+    return paginate(
+      page.map((r) => r.payload),
+      results.length,
+      q,
+    );
   }
 }

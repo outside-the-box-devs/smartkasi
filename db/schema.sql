@@ -71,10 +71,26 @@ create table profiles (
 create index on profiles (role);
 create index profiles_home_point_idx on profiles (home_lat, home_lng);
 
--- Mirror role into the JWT so the API can authorise without a DB round trip.
--- (Supabase reads raw_app_meta_data into app_metadata on the access token.)
+-- THIS COLUMN IS THE SOURCE OF TRUTH FOR AUTHORISATION.
+--
+-- It reaches the JWT two ways, both defined in the TRIGGERS section below:
+--
+--   custom_access_token_hook   GoTrue calls it every time it mints a token, so
+--                              the claim the API authorises on is COMPUTED from
+--                              this column and cannot drift from it. This is
+--                              also what makes a brand-new signup correct on
+--                              its FIRST token rather than after a refresh.
+--   t_profiles_role_to_auth    mirrors the value into
+--                              auth.users.raw_app_meta_data, which is what RLS,
+--                              the Supabase dashboard, and any Flutter client
+--                              talking straight to Supabase read. Nothing the
+--                              API authorises on depends on it.
+--
+-- "The next token" is the one caveat. An access token already in a phone's
+-- memory keeps the old role until it expires or is refreshed (jwt_expiry is
+-- 3600s in supabase/config.toml). Revoking a role is therefore not instant.
 comment on column profiles.role is
-  'Mirrored into auth.users.raw_app_meta_data->>''role'' by trigger; the API trusts the JWT claim and only reads this table for display.';
+  'Source of truth for authorisation. Reaches the JWT as app_metadata.role via public.custom_access_token_hook, computed at token-mint time, and is mirrored into auth.users.raw_app_meta_data by t_profiles_role_to_auth for RLS and direct-to-Supabase clients. Changing this row takes effect on the user''s next token, not their current one.';
 
 -- =============================================================================
 -- SHOPS
@@ -472,23 +488,166 @@ create trigger t_stock_movement_applies
   after insert on stock_movements
   for each row execute function apply_stock_movement();
 
--- Auto-create a profile whenever Supabase creates an auth user.
+-- A defensive cast. An unrecognised role must not abort a signup — GoTrue
+-- reports a trigger error as a generic 500 and the user simply cannot register.
+create or replace function safe_user_role(candidate text)
+returns user_role
+language sql
+immutable
+as $$
+  select case
+    when candidate in ('customer', 'shop_owner', 'shop_staff', 'courier', 'admin')
+      then candidate::user_role
+    else 'customer'::user_role
+  end;
+$$;
+
+comment on function safe_user_role(text) is
+  'Casts text to user_role, falling back to customer. Never raises, so a bad claim cannot break signup.';
+
+-- Auto-create a profile whenever Supabase creates an auth user, taking the role
+-- from the Admin-API-supplied claim when there is one.
+--
+-- SECURITY: raw_app_meta_data only. raw_user_meta_data is whatever the client
+-- put in the signup body, so reading a role from it would let anyone register
+-- as an admin. Do not "helpfully" add it back.
 create or replace function handle_new_auth_user() returns trigger as $$
 begin
-  insert into public.profiles (id, full_name, phone)
+  insert into public.profiles (id, role, full_name, phone)
   values (
     new.id,
+    public.safe_user_role(nullif(new.raw_app_meta_data->>'role', '')),
     coalesce(new.raw_user_meta_data->>'full_name', 'SmartKasi user'),
     new.phone
   )
   on conflict (id) do nothing;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public, auth;
 
 create trigger t_on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_auth_user();
+
+-- Mirror profiles.role back into the claim column. This is what RLS, the
+-- Supabase dashboard and any direct-to-Supabase Flutter client read.
+--
+-- The `is distinct from` guard means the common case — Admin API creates a user
+-- with a role, the trigger above writes a profile with the same role — performs
+-- no write at all, so there is no update storm during seeding.
+create or replace function sync_profile_role_to_auth() returns trigger as $$
+begin
+  update auth.users
+     set raw_app_meta_data =
+           coalesce(raw_app_meta_data, '{}'::jsonb)
+           || jsonb_build_object('role', new.role::text)
+   where id = new.id
+     and coalesce(raw_app_meta_data->>'role', '') is distinct from new.role::text;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public, auth;
+
+create trigger t_profiles_role_to_auth
+  after insert or update of role on profiles
+  for each row execute function sync_profile_role_to_auth();
+
+-- And the way back in, which the insert-time read in handle_new_auth_user
+-- cannot cover. GoTrue's Admin API does NOT create a user with app_metadata in
+-- one statement: it INSERTs the row and then UPDATEs raw_app_meta_data
+-- separately, so at t_on_auth_user_created time the role claim is not there
+-- yet. Without this, `npm run db:users` leaves five users whose claim says
+-- shop_owner / courier while their profile row says customer — and since the
+-- hook below reads profiles.role, they would then be issued customer tokens.
+--
+-- Termination: both directions guard on `is distinct from`, so an update
+-- propagates exactly one hop and the return trip is a no-op.
+create or replace function sync_auth_role_to_profile() returns trigger as $$
+declare
+  v_role user_role;
+begin
+  if nullif(new.raw_app_meta_data->>'role', '') is null then
+    return new;
+  end if;
+
+  v_role := public.safe_user_role(new.raw_app_meta_data->>'role');
+
+  update public.profiles
+     set role = v_role
+   where id = new.id
+     and role is distinct from v_role;
+
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public, auth;
+
+create trigger t_auth_role_to_profile
+  after update of raw_app_meta_data on auth.users
+  for each row execute function sync_auth_role_to_profile();
+
+-- The access-token hook — the part that fixes first-token signup.
+--
+-- GoTrue builds the first access token from its in-memory user struct inside
+-- the signup transaction, so the trigger above is too late for it: without this
+-- hook a new user gets `customer` until their first refresh. GoTrue calls this
+-- function at mint time for every token, so the role is always current and a
+-- change to profiles.role lands on the next issued token.
+--
+-- Must also be switched on outside this file:
+--   local   supabase/config.toml -> [auth.hook.custom_access_token]
+--   hosted  Dashboard -> Authentication -> Hooks -> Custom Access Token
+create or replace function custom_access_token_hook(event jsonb)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_role     text;
+  v_claims   jsonb;
+  v_app_meta jsonb;
+begin
+  select p.role::text
+    into v_role
+    from public.profiles p
+   where p.id = (event->>'user_id')::uuid;
+
+  v_claims   := coalesce(event->'claims', '{}'::jsonb);
+  v_app_meta := coalesce(v_claims->'app_metadata', '{}'::jsonb);
+
+  -- No profile row yet is not an error: fall back to whatever GoTrue already
+  -- had, then to customer. Least privilege on the unknown path.
+  v_app_meta := v_app_meta || jsonb_build_object(
+    'role',
+    coalesce(v_role, v_app_meta->>'role', 'customer')
+  );
+
+  -- Two steps, not one: jsonb_set cannot create a nested path whose parent is
+  -- missing, and 'claims' being absent must not blow up token issuance.
+  return jsonb_set(
+    jsonb_set(event, '{claims}', v_claims, true),
+    '{claims,app_metadata}', v_app_meta, true
+  );
+exception
+  -- A hook that raises blocks token issuance for EVERY user on the project.
+  -- Degrade to the claims GoTrue already built rather than locking everyone out;
+  -- the guard's own fallback is 'customer', so the failure mode is loss of
+  -- privilege, never a grant of one.
+  when others then
+    return event;
+end;
+$$;
+
+comment on function custom_access_token_hook(jsonb) is
+  'Supabase custom access token hook. Injects profiles.role into app_metadata.role at mint time, so the FIRST token after signup is already correct.';
+
+-- GoTrue calls the hook as supabase_auth_admin, which needs to reach the
+-- function and read the table. Nothing else may execute it.
+grant usage on schema public to supabase_auth_admin;
+grant execute on function custom_access_token_hook(jsonb) to supabase_auth_admin;
+grant execute on function safe_user_role(text) to supabase_auth_admin;
+revoke execute on function custom_access_token_hook(jsonb) from authenticated, anon, public;
+grant select on table profiles to supabase_auth_admin;
 
 -- =============================================================================
 -- ROW LEVEL SECURITY
@@ -510,6 +669,13 @@ alter table delivery_positions enable row level security;
 
 create policy "own profile" on profiles
   for all using (auth.uid() = id);
+
+-- custom_access_token_hook runs as supabase_auth_admin, which does not bypass
+-- RLS. Without this the hook silently reads no row and every token falls back
+-- to customer — the original bug, with a different cause.
+create policy profiles_auth_admin_read on profiles
+  as permissive for select to supabase_auth_admin
+  using (true);
 
 create policy "shops are publicly readable" on shops
   for select using (is_active);

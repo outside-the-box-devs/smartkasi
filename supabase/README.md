@@ -51,7 +51,8 @@ code apps/api/prisma/schema.prisma
 npx supabase start                  # needs storage buckets, DB empty
 cd apps/api
 npx prisma migrate dev --name add_<feature>   # review generated migration.sql, add raw SQL for triggers/RLS if needed
-Copy-Item apps/api/prisma/migrations/<ts>_add_<feature>/migration.sql ../../db/schema.sql -Force  # keep reference
+# Mirror the delta by hand into db/schema.sql. Copy-Item is only correct for the INITIAL migration;
+# for a delta it truncates the full-schema file down to that delta.
 npx prisma generate
 ```
 
@@ -74,7 +75,7 @@ Get-ChildItem supabase/migrations/*.sql | Select Name, Length  # expect 20260822
 Get-Content supabase/migrations/20260822000001_storage.sql | Select-String "storage.buckets"  # must exist
 Get-Content supabase/seed.sql | Select-String "Prisma"  # must mention Prisma, must NOT contain "insert into shops"
 Select-String supabase/config.toml -Pattern "enabled = false" -Context 2  # db.seed false
-Get-ChildItem apps/api/prisma/migrations -Recurse -Filter migration.sql | Select FullName, Length  # expect 20260822000001_init 25872
+Get-ChildItem apps/api/prisma/migrations -Recurse -Filter migration.sql | Select FullName, Length  # expect 20260822000001_init 25872 + 20260824000001_role_claim_sync
 npx supabase start    # should succeed, no FK violation
 npx supabase status   # DB 54322, Studio 54323, API 54321
 cd apps/api; npx prisma migrate status; npx prisma migrate deploy; npx prisma db seed

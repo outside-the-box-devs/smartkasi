@@ -1,4 +1,5 @@
-export type UserRole = 'customer' | 'shop_owner' | 'shop_staff' | 'courier' | 'admin';
+export type UserRole =
+  'customer' | 'shop_owner' | 'shop_staff' | 'courier' | 'admin';
 
 export interface AuthUser {
   id: string;

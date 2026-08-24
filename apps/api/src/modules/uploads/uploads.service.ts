@@ -67,7 +67,11 @@ export class UploadsService {
 
     const uploadUrl = await getSignedUrl(
       this.s3(),
-      new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: dto.content_type }),
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: dto.content_type,
+      }),
       { expiresIn: 600 },
     );
 

@@ -5,8 +5,19 @@ import { paginate } from '../../common/dto/pagination.dto';
 import type { AuthUser } from '../../common/types/auth.types';
 import { saDayRangeUtc, saToday } from '../../common/time';
 import { ShopAccessService } from '../shops/shop-access.service';
-import { BatchSalesDto, CreateSaleDto, DailyReportQuery, ListSalesQuery, VoidSaleDto } from './dto';
-import type { Prisma, Profile, Sale, SaleItem } from '../../generated/prisma/client';
+import {
+  BatchSalesDto,
+  CreateSaleDto,
+  DailyReportQuery,
+  ListSalesQuery,
+  VoidSaleDto,
+} from './dto';
+import type {
+  Prisma,
+  Profile,
+  Sale,
+  SaleItem,
+} from '../../generated/prisma/client';
 
 type SaleWithItems = Sale & { items: SaleItem[]; cashier: Profile | null };
 
@@ -60,13 +71,16 @@ export class SalesService {
           sale_id: outcome.saleId,
         });
       } catch (err) {
-        this.logger.warn(`batch sale ${sale.client_sale_id} failed: ${String(err)}`);
+        this.logger.warn(
+          `batch sale ${sale.client_sale_id} failed: ${String(err)}`,
+        );
         results.push({
           client_sale_id: sale.client_sale_id,
           status: 'failed',
           sale_id: null,
           error: {
-            code: err instanceof ApiError ? err.code : ApiErrorCode.INTERNAL_ERROR,
+            code:
+              err instanceof ApiError ? err.code : ApiErrorCode.INTERNAL_ERROR,
             message: err instanceof Error ? err.message : 'Unknown error',
           },
         });
@@ -94,7 +108,9 @@ export class SalesService {
     // Fast path: already synced. Checked before opening a transaction so a
     // repeated flush of 200 sales stays cheap.
     const existing = await this.prisma.sale.findUnique({
-      where: { shopId_clientSaleId: { shopId, clientSaleId: dto.client_sale_id } },
+      where: {
+        shopId_clientSaleId: { shopId, clientSaleId: dto.client_sale_id },
+      },
       select: { id: true },
     });
     if (existing) return { saleId: existing.id, duplicate: true };
@@ -112,7 +128,10 @@ export class SalesService {
         ApiErrorCode.PRODUCT_NOT_FOUND,
         `Unknown product ${missing[0]}`,
         422,
-        missing.map((id) => ({ field: 'items[].product_id', issue: `unknown product ${id}` })),
+        missing.map((id) => ({
+          field: 'items[].product_id',
+          issue: `unknown product ${id}`,
+        })),
       );
     }
 
@@ -127,8 +146,11 @@ export class SalesService {
             discountCents: BigInt(dto.discount_cents),
             totalCents: BigInt(dto.total_cents),
             amountTenderedCents:
-              dto.amount_tendered_cents === undefined ? null : BigInt(dto.amount_tendered_cents),
-            changeCents: dto.change_cents === undefined ? null : BigInt(dto.change_cents),
+              dto.amount_tendered_cents === undefined
+                ? null
+                : BigInt(dto.amount_tendered_cents),
+            changeCents:
+              dto.change_cents === undefined ? null : BigInt(dto.change_cents),
             paymentMethod: dto.payment_method,
             soldAt: new Date(dto.sold_at),
             items: {
@@ -169,7 +191,9 @@ export class SalesService {
       // success — the sale is recorded exactly once, which is the whole point.
       if (isUniqueViolation(err)) {
         const row = await this.prisma.sale.findUnique({
-          where: { shopId_clientSaleId: { shopId, clientSaleId: dto.client_sale_id } },
+          where: {
+            shopId_clientSaleId: { shopId, clientSaleId: dto.client_sale_id },
+          },
           select: { id: true },
         });
         if (row) return { saleId: row.id, duplicate: true };
@@ -188,7 +212,10 @@ export class SalesService {
       );
     }
 
-    const lineSum = dto.items.reduce((sum, i) => sum + i.qty * i.unit_price_cents, 0);
+    const lineSum = dto.items.reduce(
+      (sum, i) => sum + i.qty * i.unit_price_cents,
+      0,
+    );
     if (lineSum !== dto.subtotal_cents) {
       throw ApiError.unprocessable(
         ApiErrorCode.TOTALS_MISMATCH,
@@ -221,10 +248,19 @@ export class SalesService {
       }),
     ]);
 
-    return paginate(rows.map((r) => this.present(r)), total, q);
+    return paginate(
+      rows.map((r) => this.present(r)),
+      total,
+      q,
+    );
   }
 
-  async get(user: AuthUser, shopId: string, saleId: string, skipAccessCheck = false) {
+  async get(
+    user: AuthUser,
+    shopId: string,
+    saleId: string,
+    skipAccessCheck = false,
+  ) {
     if (!skipAccessCheck) await this.access.require(user, shopId);
 
     const row = await this.prisma.sale.findFirst({
@@ -238,7 +274,8 @@ export class SalesService {
   /** Voids are compensating entries, never deletes. A void must be auditable. */
   async void(user: AuthUser, shopId: string, saleId: string, dto: VoidSaleDto) {
     const perms = await this.access.require(user, shopId);
-    if (!perms.canVoidSales) throw ApiError.forbidden('You are not allowed to void sales');
+    if (!perms.canVoidSales)
+      throw ApiError.forbidden('You are not allowed to void sales');
 
     await this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findFirst({
@@ -248,7 +285,10 @@ export class SalesService {
       if (!sale) throw ApiError.notFound('Sale');
       if (sale.status === 'voided') return;
 
-      await tx.sale.update({ where: { id: saleId }, data: { status: 'voided' } });
+      await tx.sale.update({
+        where: { id: saleId },
+        data: { status: 'voided' },
+      });
 
       await tx.stockMovement.createMany({
         data: sale.items.map((item) => ({
@@ -331,7 +371,9 @@ export class SalesService {
       discount_cents: Number(row.discountCents),
       total_cents: Number(row.totalCents),
       amount_tendered_cents:
-        row.amountTenderedCents === null ? null : Number(row.amountTenderedCents),
+        row.amountTenderedCents === null
+          ? null
+          : Number(row.amountTenderedCents),
       change_cents: row.changeCents === null ? null : Number(row.changeCents),
       payment_method: row.paymentMethod,
       items: row.items.map((i) => ({

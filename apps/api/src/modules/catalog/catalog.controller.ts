@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { BarcodeLookupQuery, CreateProductDto, ListProductsQuery } from './dto';
@@ -15,7 +24,10 @@ export class CatalogController {
   }
 
   @Post()
-  async create(@Body() dto: CreateProductDto, @Res({ passthrough: true }) res: Response) {
+  async create(
+    @Body() dto: CreateProductDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { created, product } = await this.service.create(dto);
     res.status(created ? 201 : 200);
     return product;
@@ -23,7 +35,10 @@ export class CatalogController {
 
   @Public()
   @Get('barcode/:barcode')
-  byBarcode(@Param('barcode') barcode: string, @Query() query: BarcodeLookupQuery) {
+  byBarcode(
+    @Param('barcode') barcode: string,
+    @Query() query: BarcodeLookupQuery,
+  ) {
     return this.service.byBarcode(barcode, query.shop_id);
   }
 

@@ -18,7 +18,8 @@ export class RolesGuard implements CanActivate {
     if (!required?.length) return true;
 
     const user = context.switchToHttp().getRequest<Request>().user;
-    if (!user) throw ApiError.forbidden('Authentication required for this action');
+    if (!user)
+      throw ApiError.forbidden('Authentication required for this action');
     if (user.role === 'admin') return true;
     if (!required.includes(user.role)) {
       throw ApiError.forbidden(`Requires one of: ${required.join(', ')}`);
