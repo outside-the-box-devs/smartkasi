@@ -9,6 +9,10 @@ This folder contains three deployable Flutter apps backed by one shared package:
 
 ## Runtime configuration
 
+Every endpoint these apps call is real. There is no mock server any more — the
+Prism server on :4010 was retired once courier dispatch stopped being a
+stub, so a failure here is a real failure and worth reading.
+
 The API defaults to the live Railway base:
 
 ```bash

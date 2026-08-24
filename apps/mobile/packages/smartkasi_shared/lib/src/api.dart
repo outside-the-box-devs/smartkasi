@@ -23,11 +23,9 @@ class SmartKasiApi {
            headers: const {'Accept': 'application/json'},
            validateStatus: (status) => status != null && status < 500,
          ),
-       ),
-       _config = config;
+       );
 
   final Dio _dio;
-  final SmartKasiConfig _config;
   final AccessTokenProvider _accessTokenProvider;
   final TokenRefresh _refreshToken;
 
@@ -43,9 +41,6 @@ class SmartKasiApi {
     final token = await _accessTokenProvider();
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
-    }
-    if (auth && token == null && _config.hasMockBearer) {
-      headers['Authorization'] = 'Bearer ${_config.mockBearerToken}';
     }
 
     final cleanQuery = Map<String, Object?>.from(query)
@@ -402,11 +397,14 @@ class SmartKasiApi {
         await postJson('/courier/jobs/$deliveryId/accept', auth: true),
       );
 
-  Future<CourierDelivery> collectJob(String deliveryId) async =>
+  /// [shopId] names which stop was collected. Omitting it means "the next
+  /// uncollected stop in sequence", which is what a single Collected button
+  /// means on a one-shop run.
+  Future<CourierDelivery> collectJob(String deliveryId, {String? shopId}) async =>
       CourierDelivery.fromJson(
         await postJson(
           '/courier/jobs/$deliveryId/collect',
-          body: <String, Object?>{},
+          body: <String, Object?>{if (shopId != null) 'shop_id': shopId},
           auth: true,
         ),
       );

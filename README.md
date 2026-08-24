@@ -6,12 +6,15 @@ orders, and (v2) courier delivery.
 
 **Backend deadline: Sat 22 Aug 2026, 10:00 SAST.**
 
+The Prism mock is gone. `https://api-production-5594.up.railway.app/v1` is the
+only SmartKasi API, and every delivery endpoint on it is real.
+
 ## Start here
 
 | If you are… | Read |
 |---|---|
-| Building the Flutter apps | [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md), then [`mock/README.md`](mock/README.md) — you can start now, no backend needed |
-| Building the Next.js dashboard | Same two, plus `packages/contract/openapi.yaml` for typed client generation |
+| Building the Flutter apps | [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md), then `apps/mobile/README.md` |
+| Building the Next.js dashboard | Same, plus `packages/contract/openapi.yaml` for typed client generation |
 | Building the backend | [`apps/api/README.md`](apps/api/README.md) and [`docs/ERD.md`](docs/ERD.md) |
 | Deciding what to cut tonight | [`docs/BUILD_ORDER.md`](docs/BUILD_ORDER.md) |
 | Testing a running API | [`docs/TESTING.md`](docs/TESTING.md) — or just `cd apps/api && npm run smoke:auth` |
@@ -28,15 +31,13 @@ db/reset.sql              Empties the demo data so the seed can be re-applied. D
 supabase/migrations/      Mirrored copy of db/schema.sql for `supabase db reset` (see AGENTS.md).
 supabase/seed.sql         Mirrored copy of db/seed.sql for `supabase/config.toml:71` sql_paths.
 docs/                     API_CONTRACT, ERD, BUILD_ORDER.
-mock/                     Prism mock server so client work is never blocked on the backend.
 ```
 
 ## Commands
 
 ```bash
 npm install               # workspaces: apps/* and packages/*
-npm run mock              # Prism mock on :4010 — unblocks Flutter immediately
-npm run smoke:auth --workspace api  # 24 checks against a running API
+npm run smoke:auth --workspace api  # 36 checks against a running API
 npm run contract:lint     # validate the contract
 npm run dev               # turbo dev across apps
 ```
@@ -86,6 +87,9 @@ Confirmed working:
   total recalculated from R146.98 to R103.00
 - Shop B accepting shop A's leg → `403`
 - Reusing a spent quote → `409`; ordering from an advertising-only shop → `422`
+- Courier dispatch end to end: request → job board → accept → collect → handover,
+  with the order landing on `completed` and a second courier's accept losing
+  the race with a `409`
 
 ## Open questions for the team
 

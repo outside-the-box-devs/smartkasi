@@ -17,7 +17,7 @@ class _ActiveDeliveryScreenState extends State<_ActiveDeliveryScreen> {
   bool _busy = false;
   Object? _error;
 
-  Future<void> _collect() async {
+  Future<void> _collect({String? shopId}) async {
     final delivery = widget.delivery;
     if (delivery == null) return;
     setState(() {
@@ -26,7 +26,9 @@ class _ActiveDeliveryScreenState extends State<_ActiveDeliveryScreen> {
     });
     try {
       widget.onChanged(
-        await SmartKasiScope.of(context).api.collectJob(delivery.id),
+        await SmartKasiScope.of(
+          context,
+        ).api.collectJob(delivery.id, shopId: shopId),
       );
     } catch (error) {
       setState(() => _error = error);
@@ -85,10 +87,12 @@ class _ActiveDeliveryScreenState extends State<_ActiveDeliveryScreen> {
                       for (final pickup in widget.delivery!.pickups)
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          value:
-                              pickup.collected ||
-                              widget.delivery!.status == 'collected',
-                          onChanged: null,
+                          value: pickup.collected,
+                          // A collected stop cannot be un-collected, and a
+                          // multi-shop run is ticked off one shop at a time.
+                          onChanged: pickup.collected || _busy
+                              ? null
+                              : (_) => _collect(shopId: pickup.shopId),
                           title: Text('${pickup.sequence}. ${pickup.shopName}'),
                           subtitle: Text(
                             '${pickup.itemCount} item(s) - ${pickup.addressLine}',
@@ -111,11 +115,15 @@ class _ActiveDeliveryScreenState extends State<_ActiveDeliveryScreen> {
                     ],
                   ),
                 ),
-                if (widget.delivery!.status == 'assigned')
+                if (widget.delivery!.pickups.any((p) => !p.collected))
                   FilledButton.icon(
-                    onPressed: _busy ? null : _collect,
+                    onPressed: _busy ? null : () => _collect(),
                     icon: const Icon(Icons.inventory_2),
-                    label: const Text('Confirm pickup'),
+                    label: Text(
+                      widget.delivery!.pickups.length > 1
+                          ? 'Confirm next pickup'
+                          : 'Confirm pickup',
+                    ),
                   )
                 else
                   FilledButton.icon(

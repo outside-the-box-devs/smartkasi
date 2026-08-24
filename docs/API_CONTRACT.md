@@ -2,7 +2,7 @@
 
 **Status:** frozen for client development · **Backend live:** Sat 22 Aug 2026, 10:00 SAST
 **Machine-readable spec:** [`packages/contract/openapi.yaml`](../packages/contract/openapi.yaml)
-**Mock server:** `http://localhost:4010/v1` — [how to run it](../mock/README.md)
+**Base URL:** `https://api-production-5594.up.railway.app/v1`
 
 Read this document once. Read `packages/contract/openapi.yaml` for field-level truth.
 
@@ -51,9 +51,9 @@ assume it will appear.
 | `POST /orders/{id}/legs/{shopId}/accept · reject · ready` | 🟢 LIVE | |
 | `GET/POST/DELETE /shops/{id}/flyers` | 🟢 LIVE | |
 | `POST /uploads/presign` | 🟢 LIVE | R2 direct upload. |
-| `POST /orders/{id}/delivery` | 🔴 **STUB** | Always returns `unassigned`. Nobody is dispatched. |
-| `GET /deliveries/{id}` | 🔴 **STUB** | Always returns `en_route_dropoff`. |
-| `GET /courier/jobs` + accept/collect/deliver | 🔴 **STUB** | Two hardcoded jobs. No matching. |
+| `POST /orders/{id}/delivery` | 🟢 LIVE | Idempotent on the order. Safe to double-tap. |
+| `GET /deliveries/{id}` | 🟢 LIVE | Customer view. Status + ETA band only — see § Route privacy. |
+| `GET /courier/jobs` + accept/collect/deliver | 🟢 LIVE | Matched from the courier's home address. `accept` races → `409`. |
 | `POST /ai/dish-ingredients` | 🔴 **STUB** | Always returns pap & chakalaka. No model call. |
 | `POST /payments/intent` | 🔴 **STUB** | `status: "not_implemented"`. v1 is cash. |
 
@@ -315,8 +315,8 @@ Listed so nobody spends tomorrow looking for them.
 These affect client code. Answer them before Sunday, not during integration.
 
 1. **Service fee constants.** The formula is
-   `base + per_extra_shop × (shops − 1) + per_km × ceil(km)`. The mock uses
-   R10 / R5 / R3. Are those the numbers for the demo?
+   `base + per_extra_shop × (shops − 1) + per_km × ceil(km)`. The API uses
+   R10 / R5 / R1.50. Are those the numbers for the demo?
 2. **Radius cap for a multi-shop basket.** The spec errors with
    `SHOPS_TOO_FAR_APART` — at what distance? 2 km is assumed.
 3. **Who verifies trading licences during the demo?** Currently a manual admin
@@ -327,6 +327,10 @@ These affect client code. Answer them before Sunday, not during integration.
    catalog key.
 5. **Does the POS app support multiple cashiers per till?** `cashier_id` is on
    every sale but there is no shift/till-session concept.
+6. **Courier payout share.** A courier is paid `FEE_COURIER_SHARE_PCT` of the
+   order's service fee, currently 80%, fixed at the moment delivery is
+   requested. The remainder is the platform cut. Both numbers are placeholders
+   picked to make the demo add up — confirm them.
 
 ---
 

@@ -18,6 +18,7 @@ import { SalesModule } from './modules/sales/sales.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { FlyersModule } from './modules/flyers/flyers.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { DeliveryModule } from './modules/delivery/delivery.module';
 import { StubsModule } from './modules/stubs/stubs.module';
 
 @Module({
@@ -42,6 +43,7 @@ import { StubsModule } from './modules/stubs/stubs.module';
     OrdersModule,
     FlyersModule,
     UploadsModule,
+    DeliveryModule,
     StubsModule,
   ],
   providers: [

@@ -19,5 +19,9 @@ export default () => ({
     perExtraShopCents: Number(process.env.FEE_PER_EXTRA_SHOP_CENTS ?? 500),
     perKmCents: Number(process.env.FEE_PER_KM_CENTS ?? 150),
     maxBasketSpreadM: Number(process.env.MAX_BASKET_SPREAD_M ?? 2000),
+    // Share of the service fee that reaches the courier; the remainder is the
+    // platform cut. A placeholder like the three above it — see open question 3
+    // in docs/API_CONTRACT.md.
+    courierSharePct: Number(process.env.FEE_COURIER_SHARE_PCT ?? 80),
   },
 });
