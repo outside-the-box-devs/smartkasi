@@ -65,10 +65,12 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
-enabled = true
-# Specifies an ordered list of seed files to load during db reset.
-# Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# NOTE (2026-08-22): DB seeding is now handled by Prisma (apps/api/prisma/seed.ts)
+# after `supabase start` + `prisma migrate deploy`. Keep Supabase seed disabled
+# so `supabase start` does not FK-violate on shops.owner_id (profiles come from
+# auth.users via GoTrue Admin API, not from a SQL seed).
+enabled = false
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -281,9 +283,17 @@ max_frequency = "5s"
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
-# Puts profiles.role into app_metadata.role, which is what the API authorises on.
-# Defined in db/schema.sql. The remote project needs the equivalent switch in
-# Dashboard > Authentication > Hooks — see AGENTS.md § 5.
+#
+# LOAD-BEARING. public.custom_access_token_hook puts profiles.role into
+# app_metadata.role at mint time, and the API authorises on that claim alone
+# (src/common/guards/supabase-auth.guard.ts). With this disabled, a brand-new
+# signup gets `customer` on their first token and the courier / shop-owner apps
+# have no front door. The function lives in the Prisma migration
+# 20260824000001_role_claim_sync (mirrored into db/schema.sql) — this only
+# switches it on.
+#
+# The hosted project needs the same switch in
+# Dashboard -> Authentication -> Hooks -> Custom Access Token. See AGENTS.md § 2b.
 [auth.hook.custom_access_token]
 enabled = true
 uri = "pg-functions://postgres/public/custom_access_token_hook"

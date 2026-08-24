@@ -31,8 +31,14 @@ export class ShopsService {
    * hundreds of shops it is nothing. If the shop count ever reaches thousands,
    * this is the first query to move back to SQL.
    */
-  async list(q: ListShopsQuery) {
-    const where: Prisma.ShopWhereInput = { isActive: true };
+  async list(q: ListShopsQuery, user?: AuthUser) {
+    // `owner_id=me` is the dashboard view: only this caller's shops, including
+    // ones they deactivated. Without it, this stays the public township
+    // directory of active shops.
+    const mine = q.owner_id === 'me' && !!user;
+    const where: Prisma.ShopWhereInput = mine
+      ? { ownerId: user.id }
+      : { isActive: true };
 
     if (q.q) where.name = { contains: q.q, mode: 'insensitive' };
     if (q.accepts_orders !== undefined) where.acceptsOrders = q.accepts_orders;
@@ -229,8 +235,10 @@ export class ShopsService {
       lng: r.lng,
       distance_m: distanceM,
       mode: r.mode,
+      licence_status: r.licenceStatus,
       accepts_orders: r.acceptsOrders,
       accepts_delivery: r.acceptsDelivery,
+      is_active: r.isActive,
       is_open_now: isOpenNow(r.opensAt, r.closesAt),
     };
   }

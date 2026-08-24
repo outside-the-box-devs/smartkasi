@@ -1,61 +1,88 @@
-# Supabase — Local Migration Setup (SmartKasi)
+# Supabase — Local & Storage Setup (SmartKasi)
 
-> **Agent note:** This is a stub that enforces `AGENTS.md:1`. Do not treat `supabase/migrations/` as independently authored.
+> **Agent note:** This is scoped to Supabase-only objects. DB tables are owned by Prisma. See `AGENTS.md:1`.
 
 ## What lives here
 
-- `supabase/migrations/20260821123132_init_smartkasi.sql:1` — verbatim copy of `db/schema.sql:1` (28979 bytes). Applied by `supabase db reset` to the local Postgres at `supabase/config.toml:35` `54322`.
-- `supabase/seed.sql:1` — verbatim copy of `db/seed.sql:1` (18066 bytes). Loaded via `supabase/config.toml:71` `sql_paths = ["./seed.sql"]`.
-- `supabase/config.toml:59-64` — `[db.migrations] enabled=true, schema_paths=[]` (migration-file mode, not declarative `schemas/`). `experimental.pgdelta.enabled=true` for `db diff`.
+- `supabase/migrations/20260822000001_storage.sql:1` — **Supabase-only** migration (storage buckets `avatars`, `shop-logos`, `flyers`, `licence-docs`, `delivery-proofs` + `storage.objects` policies). Applied by `supabase db reset` to the local Postgres at `supabase/config.toml:35` `54322`. Never add `public.*` tables/enums here.
+- `supabase/migrations/archive/20260821123132_init_smartkasi.sql:1` — archived former DB mirror (verbatim copy of `db/schema.sql`, 25872 bytes). Now owned by `apps/api/prisma/migrations/20260822000001_init/migration.sql:1`. Do not re-apply.
+- `supabase/seed.sql:1` — Supabase-only placeholder (1-line `select`). DB demo data is seeded via `apps/api/prisma/seed.ts:1` → `db/seed.sql:1` after `apps/api/scripts/seed-users.mjs:1` creates auth users. `supabase/config.toml:66-71` has `[db.seed] enabled = false` so `supabase start` cannot FK-violate on `shops_owner_id_fkey`.
+- `supabase/config.toml:59-71` — `[db.migrations] enabled=true` (storage migrations), `[db.seed] enabled=false` (DB seed via Prisma). `experimental.pgdelta.enabled=true` for `db diff`.
 
-## Why copies
+## Why Prisma owns the DB
 
-`db/schema.sql` is canonical because it carries `pg_trgm` (`db/schema.sql:32`), 10 enum types (`db/schema.sql:38-49`), triggers (`db/schema.sql:452-496`), and RLS (`db/schema.sql:501-619`) that Prisma cannot express. Supabase CLI only knows `supabase/migrations/` + `supabase/seed.sql`, so we mirror — single source, two consumers. See `AGENTS.md:3` workflow.
+Before 2026-08-22, `supabase/migrations/20260821123132_init_smartkasi.sql` was a verbatim copy of `db/schema.sql` and `supabase/seed.sql` was a verbatim copy of `db/seed.sql`. `supabase start` created all `public.*` tables via Supabase, then tried to seed `shops` before `profiles` existed (profiles come from `auth.users` trigger, whose `insert into auth.users` block was commented out for hosted use). Result:
+
+```
+failed to send batch: ERROR: insert or update on table "shops" violates foreign key constraint "shops_owner_id_fkey"
+Pruned containers: [supabase_db_SmartKasi]  # DB destroyed on failure
+```
+
+Fix 2026-08-22: DB moved to Prisma (`prisma/migrations/20260822000001_init` holds full schema incl. `uuid-ossp` + `pg_trgm`, enums, triggers `443-490`, RLS `500-552`, views `403-439`). Supabase migrations now handle **only** storage buckets + policies. Seeding is two-phase: `supabase start` (storage only) → `prisma migrate deploy` → `seed-users.mjs` (GoTrue) → `prisma db seed`. See `AGENTS.md:2`.
 
 ## Commands
 
 ```powershell
-npm run supabase:reset   # = npx supabase db reset (applies migrations + seed)
+# Supabase storage only (DB is empty until Prisma runs)
+npm run supabase:reset   # = npx supabase db reset (applies storage migration only)
 npm run supabase:status  # check DB 54322, API 54321, Studio 54323, Inbucket 54324
-npm run supabase:migration:new  # npx supabase migration new <name> — add delta file
+npm run supabase:migration:new  # npx supabase migration new <name> — Supabase-only delta
 npm run supabase:diff    # npx supabase db diff -f <name> — needs Docker + running stack
 ```
 
-Requires Docker Desktop. Without it `migration list --local` returns `dial ECONNREFUSED 127.0.0.1:54322` — that is expected, but the migration file must still be non-empty.
+Requires Docker Desktop. Without it `migration list --local` returns `dial ECONNREFUSED 127.0.0.1:54322` — expected, but migration file must still be non-empty.
+
+For full DB setup after Supabase start:
+
+```powershell
+cd apps/api
+npx prisma migrate deploy  # or npx prisma migrate dev --name <feature> during development
+npm run db:users           # creates 5 auth.users with fixed UUIDs via GoTrue
+npx prisma db seed         # applies db/seed.sql via pg (idempotent)
+# or: npm run db:setup  (= deploy + users + seed)
+```
 
 ## Adding a migration
 
+### A. DB change (Prisma)
+
 ```powershell
-# 1. Change the source
-code ../../db/schema.sql
-# 2. Create a new migration with ONLY the delta (not the full schema)
-npx supabase migration new add_<feature>
-# Edit supabase/migrations/<new_timestamp>_add_<feature>.sql
-# 3. Keep source in sync (manual — no automation yet)
-# 4. Verify
+code apps/api/prisma/schema.prisma
+npx supabase start                  # needs storage buckets, DB empty
+cd apps/api
+npx prisma migrate dev --name add_<feature>   # review generated migration.sql, add raw SQL for triggers/RLS if needed
+# Mirror the delta by hand into db/schema.sql. Copy-Item is only correct for the INITIAL migration;
+# for a delta it truncates the full-schema file down to that delta.
+npx prisma generate
+```
+
+Never `supabase migration new` for DB objects.
+
+### B. Supabase-only change (storage/auth)
+
+```powershell
+npx supabase migration new add_<storage_feature>   # storage only!
+# Edit supabase/migrations/<ts>_add_<storage_feature>.sql — ONLY storage/auth objects
 npx supabase db reset
-cd ../apps/api; npx prisma db pull; npx prisma generate
 ```
 
-Do **not** edit a committed migration in place after it has been pushed to `wndilblmkkdyzpffmwap` (remote eu-west-1) — add a new file. The initial migration `20260821123132` was empty before 2026-08-22; now it is populated and `Get-FileHash` must match `db/schema.sql`.
-
-## Remote divergence
-
-Remote was seeded via `apps/api/scripts/sql.mjs:28` (session pooler 5432), not `supabase db push`. Before first link+push:
-
-```powershell
-npx supabase link --project-ref wndilblmkkdyzpffmwap
-npx supabase migration repair --status applied 20260821123132
-```
-
-Otherwise push fails on `create type user_role` (no `IF NOT EXISTS`).
+Do **not** touch Prisma for storage-only changes. Do **not** copy to `db/schema.sql`.
 
 ## Verify
 
 ```powershell
-Get-Item supabase/migrations/20260821123132*.sql | Select Length  # 28979
-Get-Item supabase/seed.sql | Select Length                         # 18066
-Get-FileHash ../../db/schema.sql; Get-FileHash supabase/migrations/20260821123132*.sql
+Get-ChildItem supabase/migrations/*.sql | Select Name, Length  # expect 20260822000001_storage.sql
+Get-Content supabase/migrations/20260822000001_storage.sql | Select-String "storage.buckets"  # must exist
+Get-Content supabase/seed.sql | Select-String "Prisma"  # must mention Prisma, must NOT contain "insert into shops"
+Select-String supabase/config.toml -Pattern "enabled = false" -Context 2  # db.seed false
+Get-ChildItem apps/api/prisma/migrations -Recurse -Filter migration.sql | Select FullName, Length  # expect 20260822000001_init 25872 + 20260824000001_role_claim_sync
+npx supabase start    # should succeed, no FK violation
+npx supabase status   # DB 54322, Studio 54323, API 54321
+cd apps/api; npx prisma migrate status; npx prisma migrate deploy; npx prisma db seed
 ```
 
-Full contract: `../AGENTS.md:1`.
+Full contract: `../AGENTS.md:1` and `../apps/api/prisma/seed.ts:1`.
+
+## Remote divergence
+
+Remote `wndilblmkkdyzpffmwap` (eu-west-1) was populated via `apps/api/scripts/sql.mjs:28` on `DIRECT_URL` (session pooler 5432), not `supabase db push`. `supabase_migrations` table is empty for DB; storage buckets were missing until this fix. After first `supabase link`, `migration repair` is only needed for storage migrations, not Prisma DB migrations (which use `prisma migrate deploy` over `DIRECT_URL`).
