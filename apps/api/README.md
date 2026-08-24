@@ -8,11 +8,11 @@ code is the bug.
 ## Run it
 
 ```bash
-cp .env.example .env          # DATABASE_URL + SUPABASE_URL at minimum
+cp .env.example .env          # DATABASE_URL + DIRECT_URL + SUPABASE_URL at minimum
 npm install                   # from the repo root — this is an npm workspace
-npm run db:schema             # applies ../../db/schema.sql
+npx prisma migrate deploy     # creates tables, views, triggers, RLS
 npm run db:users              # the five demo users, via the Supabase Admin API
-npm run db:seed               # applies ../../db/seed.sql (demo data)
+npx prisma db seed            # applies ../../db/seed.sql (demo data), idempotent
 npm run prisma:generate
 npm run start:dev
 ```
@@ -21,15 +21,26 @@ npm run start:dev
 - Contract docs (Swagger UI, served from the real `openapi.yaml`): `http://localhost:3000/docs`
 - Health: `http://localhost:3000/v1/health` — `"degraded"` means the DB is unreachable
 
+**Prisma owns the schema now.** `prisma migrate deploy` is the way tables get
+created; `npm run db:schema` still exists and still applies `../../db/schema.sql`,
+but that file is a *generated reference copy* of the initial migration. Use it
+only for tooling that wants one flat SQL file — never as the way you migrate.
+See [`AGENTS.md`](../../AGENTS.md) before you touch any of this.
+
+There are no `prisma:migrate`, `prisma:seed` or `db:setup` npm scripts on this
+package — call `npx prisma …` directly. `prisma.config.ts` wires `db seed` to
+`ts-node prisma/seed.ts` and points the CLI at `DIRECT_URL`.
+
 `db:schema`, `db:seed` and `db:sql` go through `scripts/sql.mjs` rather than `psql`,
 so a machine without the Postgres client (most Windows dev boxes) can still
 apply the SQL. It connects on `DIRECT_URL` — the 6543 pooler cannot run DDL or
 the seed's `do $ ... $` block.
 
 `db:users` creates the five demo users through GoTrue with the UUIDs
-`db/seed.sql` expects. The seed's own `insert into auth.users` block is
-commented out, because a hand-written row leaves GoTrue's token columns NULL and
-signs in once before failing on refresh.
+`db/seed.sql` expects. It must run **before** the seed: shops FK to `profiles`,
+and `profiles` rows are trigger-created from `auth.users`. The seed's own
+`insert into auth.users` block is commented out, because a hand-written row
+leaves GoTrue's token columns NULL and signs in once before failing on refresh.
 
 If the database password contains `@`, `/`, `:` or `#`, percent-encode it in both
 URLs (`@` becomes `%40`). An unencoded `@` splits the userinfo in the wrong place
@@ -85,19 +96,21 @@ path is live.** Verified end to end: a signed-in demo user gets an ES256 token,
 ## Test it
 
 ```bash
-npm run smoke:auth                                   # all 24, real tokens
+npm run smoke:auth                                   # all 39, real tokens
 npm run smoke:auth -- --base https://your-api.com/v1 # against a deployment
 npm run smoke -- --public-only                       # the 9 that need no token
 ```
 
-24 checks, exits non-zero on failure. See [`docs/TESTING.md`](../../docs/TESTING.md).
+39 checks — 9 public, 30 authenticated — exits non-zero on failure. See
+[`docs/TESTING.md`](../../docs/TESTING.md).
 
 Use `smoke:auth`, not `smoke`, on this project. Plain `smoke` self-signs HS256
 tokens from `SUPABASE_JWT_SECRET`; that secret is blank here because the project
-signs ES256, so `mint()` returns `undefined` and the 15 `checkAuth` checks
+signs ES256, so `mint()` returns `undefined` and the 30 authenticated checks
 quietly skip — you get "9 passed" and no failures, which reads like success.
-`smoke:auth` signs the three demo users in through GoTrue and passes their real
-tokens, which also exercises the JWKS path a self-signed token never touches.
+`smoke:auth` signs four demo users in through GoTrue (`thoko`, `sipho`,
+`customer`, `courier`) and passes their real tokens, which also exercises the
+JWKS path a self-signed token never touches.
 
 **The suite writes to the database it runs against.** It flushes a POS batch and
 places a real order, so a run adds ~1 sale, 1 order and 2 stock movements, and
@@ -124,6 +137,11 @@ Run against a seeded Postgres, not just written:
 - Daily report bucketed by the Africa/Johannesburg day
 - Quote → order → shop A accepts, shop B rejects → `partially_accepted`, total recalculated
 - Shop B accepting shop A's leg → `403`; spent quote → `409`; advertising-only shop → `422`
+- Courier dispatch end to end: request → job board → accept → collect → handover,
+  order lands on `completed`, and a second courier's accept loses the race with a `409`
+- Role claims: an Admin-API courier's **first** token says `courier`; changing
+  `profiles.role` reaches the next token with no refresh; and a self-service
+  signup sending `data: {"role":"admin"}` still comes back as `customer`
 
 ## Layout
 
@@ -142,8 +160,15 @@ src/
     guards/                Supabase JWT + roles
   modules/
     health me shops catalog search inventory sync sales orders flyers uploads
-    stubs/                 delivery, ai, payments — fixed responses, delete when real
+    delivery/              REAL — dispatch, courier job board, collect, handover
+    stubs/                 ai, payments only — fixed responses, delete when real
 ```
+
+`delivery/` left `stubs/` on 22 Aug. It now owns `POST /v1/orders/{id}/delivery`,
+`GET /v1/deliveries/{id}` and the courier job board
+(`GET /v1/courier/jobs`, `accept`, `collect`, `deliver`), backed by real rows and
+real state transitions. The Prism mock was retired in the same change — there is
+no second API to point a client at any more.
 
 ## Decisions you should not undo without reading this
 
@@ -162,6 +187,27 @@ two queries move back to raw SQL with PostGIS.
 **Auth is on by default.** The global guard authenticates every route; opt out
 with `@Public()`. The inverse — opt *in* to auth — is how endpoints ship
 unprotected.
+
+**The role claim is built in the database, not here.** The guard reads
+`app_metadata.role` and trusts it. `profiles.role` is the authority behind that
+claim, and two database objects connect them (migration
+`20260824000001_role_claim_sync`):
+
+- `t_profiles_role_to_auth` mirrors `profiles.role` into
+  `auth.users.raw_app_meta_data`, for RLS and direct-to-Supabase clients.
+- `custom_access_token_hook(jsonb)` is called by GoTrue at mint time and injects
+  the live `profiles.role` into every token.
+
+Both are needed. The trigger alone cannot fix signup: GoTrue builds the first
+access token from its in-memory user struct inside the signup transaction, so a
+trigger firing afterwards leaves the new user on `customer` until they refresh.
+**The hook is a manual switch on the hosted project** — Dashboard →
+Authentication → Hooks → Custom Access Token. Turn it off and every fresh signup
+silently becomes a permanent customer again, which is exactly the bug this
+replaced. The `Role claims` smoke checks exist to make that loud.
+
+Do not read a role out of `raw_user_meta_data`. That is the client-supplied
+signup body; anyone could register as an admin.
 
 **Stock is a ledger.** `stock_movements` is append-only; `shop_products.stockQty`
 is a projection maintained by a database trigger. Never write `stockQty`
@@ -235,7 +281,7 @@ The full workflow is:
 ```
 # A. DB change (Prisma)
 edit prisma/schema.prisma  →  npx prisma migrate dev --name add_<feature>  →  review migration.sql (paste raw SQL for triggers/RLS)  →  npx prisma generate
-# Optionally: Copy-Item prisma/migrations/<ts>_add_<feature>/migration.sql ../../db/schema.sql -Force
+# Then mirror the delta by hand into ../../db/schema.sql (a full create script — do NOT Copy-Item a delta over it)
 
 # B. Storage/auth change (Supabase)
 npx supabase migration new add_<storage_feature>  # storage/auth only!

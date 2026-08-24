@@ -63,6 +63,9 @@ const TOKENS = {
 
 let passed = 0;
 const failures = [];
+// Declared up here rather than beside pgOne: the role checks run before the
+// helper definitions are reached, and reading a `let` in its TDZ throws.
+let pgClient;
 const c = process.stdout.isTTY
   ? { g: '\x1b[32m', r: '\x1b[31m', d: '\x1b[2m', y: '\x1b[33m', x: '\x1b[0m' }
   : { g: '', r: '', d: '', y: '', x: '' };
@@ -256,6 +259,92 @@ await checkAuth('owner token resolves the profile', async () => {
   expect(r.body.shop_ids.includes(IDS.shop1), 'owner is not linked to Mama Thoko\'s');
   return `${r.body.full_name}, ${r.body.shop_ids.length} shop`;
 });
+
+// --- role claims ------------------------------------------------------------
+// Regression cover for the 2026-08-24 fix. profiles.role was documented as
+// being mirrored into the JWT and nothing ever did it, so every user who signed
+// up through the app was a customer permanently and the courier and shop-owner
+// apps had no front door. It stayed invisible because every other check here
+// runs as a pre-provisioned demo user whose claim was set by hand at seed time.
+//
+// Three things have to hold and each can break on its own:
+//   1. t_profiles_role_to_auth keeps auth.users.raw_app_meta_data in step
+//   2. custom_access_token_hook puts the role on the FIRST token, not the second
+//   3. a change to profiles.role reaches the next issued token
+//
+// If these start failing, check the hook is still switched on before you touch
+// the SQL: supabase/config.toml locally, Dashboard -> Authentication -> Hooks
+// on the hosted project. Disabling it degrades 2 without touching 1 or 3.
+
+console.log('\nRole claims');
+
+const SB_URL = process.env.SUPABASE_URL?.replace(/\/$/, '');
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const PG_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+const probe = { id: randomUUID(), email: `smoke-role-${Date.now()}@smartkasi.test`, password: 'Password123!' };
+
+await checkRole('a fresh courier gets the role on their FIRST token', async () => {
+  const created = await gotrue('/auth/v1/admin/users', {
+    method: 'POST',
+    body: {
+      id: probe.id,
+      email: probe.email,
+      password: probe.password,
+      email_confirm: true,
+      user_metadata: { full_name: 'Smoke Courier' },
+      app_metadata: { role: 'courier' },
+    },
+  });
+  expect(created.status === 200 || created.status === 201, `admin create returned ${created.status} ${created.raw.slice(0, 160)}`);
+
+  const token = await signIn(probe.email, probe.password);
+  const role = claimsOf(token)?.app_metadata?.role;
+  // Not "after a refresh" — this is the very first access token GoTrue issues.
+  expect(role === 'courier', `first token says role=${role ?? '(absent)'}. If it says customer, the custom access token hook is not enabled or not reachable by supabase_auth_admin.`);
+
+  const me = await api('/me', { token });
+  expect(me.status === 200, `/me returned ${me.status}`);
+  expect(me.body.role === 'courier', `/me says ${me.body.role}`);
+  return 'courier on token #1';
+});
+
+await checkRole('the signup trigger mirrors role into auth.users', async () => {
+  const claim = await pgOne(
+    `select raw_app_meta_data->>'role' as role from auth.users where id = $1`,
+    [probe.id],
+  );
+  expect(claim?.role === 'courier', `raw_app_meta_data.role is ${claim?.role ?? '(absent)'} — t_profiles_role_to_auth is missing or was dropped`);
+
+  const profile = await pgOne(`select role from public.profiles where id = $1`, [probe.id]);
+  expect(profile?.role === 'courier', `profiles.role is ${profile?.role ?? '(no row)'} — handle_new_auth_user is not reading raw_app_meta_data`);
+  return 'profiles.role and the claim agree';
+}, { needsDb: true });
+
+await checkRole('changing profiles.role reaches the next issued token', async () => {
+  await pgOne(`update public.profiles set role = 'shop_owner' where id = $1 returning role`, [probe.id]);
+
+  const claim = await pgOne(
+    `select raw_app_meta_data->>'role' as role from auth.users where id = $1`,
+    [probe.id],
+  );
+  expect(claim?.role === 'shop_owner', `the trigger did not mirror the update — raw_app_meta_data.role is still ${claim?.role}`);
+
+  const token = await signIn(probe.email, probe.password);
+  const role = claimsOf(token)?.app_metadata?.role;
+  expect(role === 'shop_owner', `the new token still says ${role} — a role change is not reaching the JWT`);
+
+  const me = await api('/me', { token });
+  expect(me.body?.role === 'shop_owner', `/me says ${me.body?.role}`);
+  return 'courier -> shop_owner, no refresh needed';
+}, { needsDb: true });
+
+// The probe user is disposable and would otherwise accumulate on every run.
+// Deleting it cascades the profile row. An open pg client keeps the event loop
+// alive, so close it here rather than at exit.
+if (SB_URL && SB_KEY && !PUBLIC_ONLY) {
+  await gotrue(`/auth/v1/admin/users/${probe.id}`, { method: 'DELETE' }).catch(() => {});
+}
+await pgEnd();
 
 console.log('\nPOS & offline sync');
 const saleId = randomUUID();
@@ -560,6 +649,88 @@ console.log(`${c.r}${failures.length} of ${total} checks failed:${c.x}`);
 for (const f of failures) console.log(`  ${c.r}·${c.x} ${f.name}\n    ${f.message}`);
 console.log('');
 process.exit(1);
+
+// ---- role-claim helpers ---------------------------------------------------
+
+/**
+ * Like checkAuth, but these need the service-role key (to provision a throwaway
+ * user) and sometimes a direct Postgres connection. Missing credentials is a
+ * skip, not a failure — the same run has to work in CI without secrets. It says
+ * which variable is missing, because a silent skip here is how the original bug
+ * survived.
+ */
+async function checkRole(name, fn, { needsDb = false } = {}) {
+  const missing = [];
+  if (!SB_URL) missing.push('SUPABASE_URL');
+  if (!SB_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (needsDb && !PG_URL) missing.push('DIRECT_URL');
+
+  if (PUBLIC_ONLY || missing.length) {
+    skipped++;
+    const why = PUBLIC_ONLY ? 'needs a token' : `needs ${missing.join(' + ')}`;
+    console.log(`  ${c.y}SKIP${c.x}  ${name}  ${c.d}(${why})${c.x}`);
+    return;
+  }
+  return check(name, fn);
+}
+
+async function gotrue(path, { method = 'GET', body } = {}) {
+  const res = await fetch(`${SB_URL}${path}`, {
+    method,
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const raw = await res.text();
+  let json;
+  try { json = raw ? JSON.parse(raw) : null; } catch { json = null; }
+  return { status: res.status, body: json, raw };
+}
+
+/** Password grant. Returns the access token GoTrue mints, claims and all. */
+async function signIn(email, password) {
+  const r = await gotrue('/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    body: { email, password },
+  });
+  if (!r.body?.access_token) {
+    throw new Error(`sign-in failed for ${email}: ${r.status} ${r.raw.slice(0, 160)}`);
+  }
+  return r.body.access_token;
+}
+
+/** Reads a JWT payload without verifying it — we only care what it claims. */
+function claimsOf(token) {
+  try {
+    return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** One row, or undefined. Opens the connection on first use. */
+async function pgOne(sql, params) {
+  if (!pgClient) {
+    const { default: pg } = await import('pg');
+    pgClient = new pg.Client({
+      connectionString: PG_URL,
+      ssl: /supabase\.(co|com)/.test(PG_URL) ? { rejectUnauthorized: false } : undefined,
+    });
+    await pgClient.connect();
+  }
+  const res = await pgClient.query(sql, params);
+  return res.rows[0];
+}
+
+async function pgEnd() {
+  if (!pgClient) return;
+  const client = pgClient;
+  pgClient = undefined;
+  await client.end().catch(() => {});
+}
 
 // ---- helpers --------------------------------------------------------------
 
