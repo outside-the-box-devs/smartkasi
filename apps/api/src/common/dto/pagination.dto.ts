@@ -2,10 +2,17 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class PaginationQuery {
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   page = 1;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   per_page = 25;
 
   get offset(): number {
@@ -25,7 +32,11 @@ export interface Paginated<T> {
   meta: PageMeta;
 }
 
-export function paginate<T>(data: T[], total: number, q: PaginationQuery): Paginated<T> {
+export function paginate<T>(
+  data: T[],
+  total: number,
+  q: PaginationQuery,
+): Paginated<T> {
   return {
     data,
     meta: {

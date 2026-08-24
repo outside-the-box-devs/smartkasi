@@ -43,6 +43,7 @@ const IDS = {
   owner2: '11111111-0000-4000-8000-000000000002',   // Bra Sipho
   customer: '22222222-0000-4000-8000-000000000002', // Lerato
   courier: '33333333-0000-4000-8000-000000000003',  // Thabo, bicycle, verified
+  admin: '44444444-0000-4000-8000-000000000004',    // Ayanda, platform operator
   shop1: '7b0e1c2a-1111-4a3b-9c11-aaaaaaaaaaaa',
   shop2: '7b0e1c2a-2222-4a3b-9c11-bbbbbbbbbbbb',
   shop3: '7b0e1c2a-3333-4a3b-9c11-cccccccccccc',    // advertising_only
@@ -57,6 +58,7 @@ const TOKENS = {
   owner2: process.env.OWNER2_TOKEN ?? mint(IDS.owner2, 'shop_owner'),
   customer: process.env.CUSTOMER_TOKEN ?? mint(IDS.customer, 'customer'),
   courier: process.env.COURIER_TOKEN ?? mint(IDS.courier, 'courier'),
+  admin: process.env.ADMIN_TOKEN ?? mint(IDS.admin, 'admin'),
 };
 
 // ---- tiny test harness ----------------------------------------------------
@@ -159,10 +161,10 @@ await check('health returns ok', () => {
 if (!TOKENS.owner1 && !PUBLIC_ONLY) {
   console.log(`\n${c.y}No way to authenticate — stopping before the authenticated checks.${c.x}`);
   console.log('');
-  console.log('  To run the 9 public checks right now:');
+  console.log('  To run just the public checks right now:');
   console.log(`    ${c.d}npm run smoke -- --public-only${c.x}`);
   console.log('');
-  console.log('  For the full 24, this script needs to present a token the API accepts.');
+  console.log('  For the full suite, this script needs to present a token the API accepts.');
   console.log('  It has to match however the API itself is configured:');
   console.log('');
   console.log(`    ${c.d}Legacy Supabase (HS256 shared secret)${c.x}`);
@@ -257,6 +259,51 @@ await checkAuth('owner token resolves the profile', async () => {
   return `${r.body.full_name}, ${r.body.shop_ids.length} shop`;
 });
 
+
+// --- the role claim --------------------------------------------------------
+// These only mean something under `npm run smoke:auth`. mint() hard-codes the
+// role into self-signed HS256 tokens, so plain `npm run smoke` would pass the
+// first two with the hook switched off entirely.
+await checkAuth('courier token carries the courier claim', async () => {
+  const role = claimRole(TOKENS.courier);
+  expect(role === 'courier', `app_metadata.role is ${role ?? 'absent'} — is the custom access token hook registered?`);
+  return REAL_TOKENS ? 'from the hook' : 'self-signed, proves nothing';
+});
+
+await checkAuth('the claim is what authorises, not the profile row', async () => {
+  const denied = await api('/courier/jobs', { token: TOKENS.customer });
+  expect(denied.status === 403, `customer got ${denied.status} on the job board`);
+  const allowed = await api('/courier/jobs', { token: TOKENS.courier });
+  expect(allowed.status === 200, `courier got ${allowed.status} on the job board`);
+  return '403 for the customer, 200 for the courier';
+});
+
+// The actual regression test for issue #21: change the row, and the NEXT token
+// must carry the new role. Reverts itself, but it does write — like the POS
+// batch and the order below it, this suite is for demo data only.
+await checkAuth('a role change reaches the next token', async () => {
+  if (!REAL_TOKENS) return 'skipped — needs smoke:auth, self-signed tokens cannot show this';
+
+  const elevate = await api(`/admin/users/${IDS.customer}/role`, {
+    method: 'PATCH', token: TOKENS.admin, body: { role: 'courier' },
+  });
+  expect(elevate.status === 200, `elevate returned ${elevate.status} ${elevate.body?.error?.code ?? ''}`);
+
+  try {
+    const fresh = await signIn('customer@smartkasi.test');
+    expect(claimRole(fresh) === 'courier', `new token still says ${claimRole(fresh)} — the hook is not reading profiles.role`);
+    const jobs = await api('/courier/jobs', { token: fresh });
+    expect(jobs.status === 200, `elevated user got ${jobs.status} on the job board`);
+  } finally {
+    await api(`/admin/users/${IDS.customer}/role`, {
+      method: 'PATCH', token: TOKENS.admin, body: { role: 'customer' },
+    });
+  }
+
+  const reverted = await signIn('customer@smartkasi.test');
+  expect(claimRole(reverted) === 'customer', `revert failed, still ${claimRole(reverted)}`);
+  return 'customer -> courier -> customer, claim followed each time';
+});
 console.log('\nPOS & offline sync');
 const saleId = randomUUID();
 const batch = {
@@ -592,6 +639,48 @@ function loadDotEnv(path) {
   }
 }
 
+
+// ---- role claim helpers ---------------------------------------------------
+
+/**
+ * True when the tokens came from GoTrue rather than from mint() below.
+ * Only real tokens exercise the custom access token hook, so the claim checks
+ * announce which mode they ran in instead of quietly proving nothing.
+ */
+const REAL_TOKENS = Boolean(process.env.COURIER_TOKEN);
+
+/** The role the API will actually authorise on — read from the token, not /me. */
+function claimRole(token) {
+  if (!token) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return payload?.app_metadata?.role;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Sign a demo user in for a FRESH token. The point is the round trip: a role
+ * change only shows up in a newly minted token, so re-reading an existing one
+ * would pass whether the hook works or not.
+ */
+async function signIn(email) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing from apps/api/.env');
+
+  const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: 'Password123!' }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.access_token) {
+    throw new Error(`sign-in for ${email} failed (${res.status}) — run \`npm run db:users\``);
+  }
+  return body.access_token;
+}
 function mint(sub, role) {
   if (!SECRET) return undefined;
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');

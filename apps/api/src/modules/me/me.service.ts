@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import type { AuthUser } from '../../common/types/auth.types';
 import { UpdateMeDto } from './dto';
-import type { Profile, UserRole } from '../../generated/prisma/client';
+import type { Profile } from '../../generated/prisma/client';
 
 @Injectable()
 export class MeService {
@@ -12,6 +12,12 @@ export class MeService {
    * Doubles as "complete registration". Supabase may have created the auth user
    * before the profile trigger existed, so upsert rather than 404 — a user who
    * can present a valid token should never be told they do not exist.
+   *
+   * Deliberately does NOT set role. profiles.role is the source of truth that
+   * public.custom_access_token_hook reads to build the claim; seeding it FROM
+   * the claim made the two seed each other, so the guard's 'customer' fallback
+   * quietly became persisted data. Let the column default apply instead, and
+   * change a role through PATCH /admin/users/:id/role.
    */
   async getOrCreate(user: AuthUser) {
     const profile = await this.prisma.profile.upsert({
@@ -19,7 +25,6 @@ export class MeService {
       update: {},
       create: {
         id: user.id,
-        role: user.role as UserRole,
         fullName: user.email?.split('@')[0] ?? 'SmartKasi user',
       },
     });
@@ -43,10 +48,18 @@ export class MeService {
 
   private async shopIds(userId: string): Promise<string[]> {
     const [owned, staffed] = await Promise.all([
-      this.prisma.shop.findMany({ where: { ownerId: userId }, select: { id: true } }),
-      this.prisma.shopStaff.findMany({ where: { userId }, select: { shopId: true } }),
+      this.prisma.shop.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      }),
+      this.prisma.shopStaff.findMany({
+        where: { userId },
+        select: { shopId: true },
+      }),
     ]);
-    return [...new Set([...owned.map((s) => s.id), ...staffed.map((s) => s.shopId)])];
+    return [
+      ...new Set([...owned.map((s) => s.id), ...staffed.map((s) => s.shopId)]),
+    ];
   }
 
   private present(p: Profile, shopIds: string[]) {

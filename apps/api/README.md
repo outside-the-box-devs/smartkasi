@@ -217,10 +217,10 @@ with `Number()` explicitly; the polyfill is the safety net.
 ## Migrations
 
 `db/schema.sql:1` is the source of truth — it carries the triggers (`db/schema.sql:452-496`), the RLS
-policies (`db/schema.sql:501-560`) and the check constraints that Prisma cannot express.
+policies (`db/schema.sql:501-619`) and the check constraints that Prisma cannot express.
 
 **Local Supabase path (2026-08-22 fix — see `AGENTS.md:1`):** `db/schema.sql` is mirrored verbatim to
-`supabase/migrations/20260821123132_init_smartkasi.sql:1` (26443 bytes) and `db/seed.sql` to `supabase/seed.sql:1`
+`supabase/migrations/20260821123132_init_smartkasi.sql:1` (28979 bytes) and `db/seed.sql` to `supabase/seed.sql:1`
 so `npx supabase db reset` (or `npm run supabase:reset` from the repo root) applies the same schema to the
 local Postgres at `supabase/config.toml:35` port `54322`. `supabase/config.toml:71` `sql_paths = ["./seed.sql"]`
 depends on that copy.

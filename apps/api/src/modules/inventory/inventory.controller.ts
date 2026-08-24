@@ -1,10 +1,21 @@
 import {
-  Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth.types';
 import {
-  AddInventoryItemDto, BulkUpsertInventoryDto, ListInventoryQuery, UpdateInventoryItemDto,
+  AddInventoryItemDto,
+  BulkUpsertInventoryDto,
+  ListInventoryQuery,
+  UpdateInventoryItemDto,
 } from './dto';
 import { InventoryService } from './inventory.service';
 
@@ -22,7 +33,10 @@ export class InventoryController {
   }
 
   @Get('low-stock')
-  lowStock(@CurrentUser() user: AuthUser, @Param('shopId', ParseUUIDPipe) shopId: string) {
+  lowStock(
+    @CurrentUser() user: AuthUser,
+    @Param('shopId', ParseUUIDPipe) shopId: string,
+  ) {
     return this.service.lowStock(user, shopId);
   }
 

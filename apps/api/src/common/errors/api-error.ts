@@ -62,14 +62,29 @@ export class ApiError extends HttpException {
   }
 
   static notFound(what: string): ApiError {
-    return new ApiError(ApiErrorCode.NOT_FOUND, `${what} not found`, HttpStatus.NOT_FOUND);
+    return new ApiError(
+      ApiErrorCode.NOT_FOUND,
+      `${what} not found`,
+      HttpStatus.NOT_FOUND,
+    );
   }
 
-  static forbidden(message = 'You do not have access to this resource'): ApiError {
+  static forbidden(
+    message = 'You do not have access to this resource',
+  ): ApiError {
     return new ApiError(ApiErrorCode.FORBIDDEN, message, HttpStatus.FORBIDDEN);
   }
 
-  static unprocessable(code: ApiErrorCode, message: string, details: ApiErrorDetail[] = []): ApiError {
-    return new ApiError(code, message, HttpStatus.UNPROCESSABLE_ENTITY, details);
+  static unprocessable(
+    code: ApiErrorCode,
+    message: string,
+    details: ApiErrorDetail[] = [],
+  ): ApiError {
+    return new ApiError(
+      code,
+      message,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    );
   }
 }

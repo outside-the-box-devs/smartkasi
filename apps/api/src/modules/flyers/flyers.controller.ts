@@ -1,10 +1,22 @@
 import {
-  Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
 } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth.types';
-import { CreateFlyerDto, FlyersService, ListFlyersQuery } from './flyers.service';
+import {
+  CreateFlyerDto,
+  FlyersService,
+  ListFlyersQuery,
+} from './flyers.service';
 
 @Controller('shops/:shopId/flyers')
 export class FlyersController {
@@ -12,7 +24,10 @@ export class FlyersController {
 
   @Public()
   @Get()
-  list(@Param('shopId', ParseUUIDPipe) shopId: string, @Query() query: ListFlyersQuery) {
+  list(
+    @Param('shopId', ParseUUIDPipe) shopId: string,
+    @Query() query: ListFlyersQuery,
+  ) {
     return this.service.list(shopId, query);
   }
 

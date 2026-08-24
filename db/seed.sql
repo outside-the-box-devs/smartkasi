@@ -57,6 +57,7 @@ update profiles set role = 'shop_owner', full_name = 'Thoko Ndlovu',  phone = '+
 update profiles set role = 'shop_owner', full_name = 'Sipho Dlamini', phone = '+27821234568' where id = '11111111-0000-4000-8000-000000000002';
 update profiles set role = 'shop_owner', full_name = 'Naledi Khumalo',phone = '+27821234569' where id = '11111111-0000-4000-8000-000000000003';
 update profiles set role = 'courier',    full_name = 'Thabo Mahlangu',phone = '+27821234570' where id = '33333333-0000-4000-8000-000000000003';
+update profiles set role = 'admin',      full_name = 'Ayanda Mokwena',phone = '+27821234572' where id = '44444444-0000-4000-8000-000000000004';
 update profiles
    set role = 'customer', full_name = 'Lerato Mokoena', phone = '+27821234571',
        home_address = '77 Mooki St, Orlando East',

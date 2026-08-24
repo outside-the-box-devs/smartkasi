@@ -32,6 +32,7 @@ assume it will appear.
 |---|---|---|
 | `GET /health` | 🟢 LIVE | |
 | `GET /me` · `PATCH /me` | 🟢 LIVE | Call `GET /me` right after Supabase sign-in. |
+| `PATCH /admin/users/{id}/role` | 🟢 LIVE | Admin only. The only way to change a role. Effective on the user's **next** token. |
 | `GET /shops` | 🟢 LIVE | Geo search. Pass `lat`/`lng` to get `distance_m`. |
 | `POST /shops` · `GET /shops/{id}` · `PATCH /shops/{id}` | 🟢 LIVE | |
 | `POST /shops/{id}/licence` | 🟢 LIVE | Manual admin verification in v1. |
@@ -159,6 +160,16 @@ carry the password into anything real.
 | `shop_staff` | Sell, sync; inventory and voids only if flagged |
 | `courier` | Courier job endpoints. LIVE since the delivery work landed |
 | `admin` | Everything, incl. licence verification |
+
+**Where the role comes from.** `profiles.role` is the source of truth. It becomes
+the `app_metadata.role` claim through `public.custom_access_token_hook`, which
+Supabase calls every time it mints a token — the claim is computed from the row,
+not copied to it, so the two cannot drift apart.
+
+The one thing to design around: a change takes effect on the user's **next**
+token. An access token already in a phone's memory keeps the old role until it
+expires or is refreshed (1 hour). Treat role changes as eventually consistent,
+and do not use one as a way to revoke access immediately.
 
 Endpoints marked `security: []` in the spec are public — shop directory,
 product catalog, search, flyers. The customer app can render its browse
@@ -362,6 +373,9 @@ A shop owner submits; a human at SmartKasi approves or rejects with a reason.
 There is currently no endpoint that approves one — `POST /shops/{shopId}/licence`
 accepts a submission that nothing can act on. Tracked in issue #26, with the
 console itself in #27.
+
+The role half of this now exists: `PATCH /admin/users/{id}/role` is the only way
+to move somebody between apps, and it is admin-guarded for the same reason.
 
 ### 9.4 Barcode format — DECIDED: EAN-13 canonical, normalise on write
 

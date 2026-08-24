@@ -1,10 +1,24 @@
 import {
-  Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth.types';
-import { BatchSalesDto, CreateSaleDto, DailyReportQuery, ListSalesQuery, VoidSaleDto } from './dto';
+import {
+  BatchSalesDto,
+  CreateSaleDto,
+  DailyReportQuery,
+  ListSalesQuery,
+  VoidSaleDto,
+} from './dto';
 import { SalesService } from './sales.service';
 
 @Controller('shops/:shopId')

@@ -51,7 +51,6 @@ export class PrismaService extends PrismaClient {
       },
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     super({ adapter });
   }
 }

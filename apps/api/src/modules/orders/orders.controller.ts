@@ -1,8 +1,22 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, HttpCode } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  HttpCode,
+} from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth.types';
 import {
-  AcceptLegDto, CancelOrderDto, CreateOrderDto, ListOrdersQuery, QuoteRequestDto, RejectLegDto,
+  AcceptLegDto,
+  CancelOrderDto,
+  CreateOrderDto,
+  ListOrdersQuery,
+  QuoteRequestDto,
+  RejectLegDto,
 } from './dto';
 import { OrdersService } from './orders.service';
 import { QuoteService } from './quote.service';
@@ -31,7 +45,10 @@ export class OrdersController {
   }
 
   @Get(':orderId')
-  get(@CurrentUser() user: AuthUser, @Param('orderId', ParseUUIDPipe) orderId: string) {
+  get(
+    @CurrentUser() user: AuthUser,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
     return this.service.get(user, orderId);
   }
 

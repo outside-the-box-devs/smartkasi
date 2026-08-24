@@ -8,6 +8,7 @@ import { SupabaseAuthGuard } from './common/guards/supabase-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
 import { HealthModule } from './modules/health/health.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { MeModule } from './modules/me/me.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
@@ -34,6 +35,7 @@ import { StubsModule } from './modules/stubs/stubs.module';
     PrismaModule,
     HealthModule,
     MeModule,
+    AdminModule,
     ShopsModule,
     CatalogModule,
     SearchModule,

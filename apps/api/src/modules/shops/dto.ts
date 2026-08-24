@@ -1,7 +1,14 @@
 import { Type } from 'class-transformer';
 import {
-  IsBoolean, IsDateString, IsEnum, IsLatitude, IsLongitude, IsOptional,
-  IsString, IsUrl, MaxLength,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
 } from 'class-validator';
 import { GeoQuery } from '../../common/dto/geo.dto';
 import { PaginationQuery } from '../../common/dto/pagination.dto';

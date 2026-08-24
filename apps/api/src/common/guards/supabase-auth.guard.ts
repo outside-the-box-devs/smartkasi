@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  HttpStatus,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
@@ -60,7 +66,9 @@ export class SupabaseAuthGuard implements CanActivate {
       const expired = err instanceof Error && /exp/i.test(err.message);
       throw new ApiError(
         expired ? ApiErrorCode.TOKEN_EXPIRED : ApiErrorCode.UNAUTHENTICATED,
-        expired ? 'Access token expired — refresh and retry once' : 'Invalid access token',
+        expired
+          ? 'Access token expired — refresh and retry once'
+          : 'Invalid access token',
         HttpStatus.UNAUTHORIZED,
       );
     }
@@ -77,14 +85,18 @@ export class SupabaseAuthGuard implements CanActivate {
 
     if (secret) {
       this.hsKey ??= new TextEncoder().encode(secret);
-      const { payload } = await jwtVerify(token, this.hsKey, { algorithms: ['HS256'] });
+      const { payload } = await jwtVerify(token, this.hsKey, {
+        algorithms: ['HS256'],
+      });
       return payload;
     }
 
     const url = this.config.get<string>('supabase.url');
     if (!url) throw new Error('SUPABASE_URL is not configured');
 
-    this.jwks ??= createRemoteJWKSet(new URL(`${url}/auth/v1/.well-known/jwks.json`));
+    this.jwks ??= createRemoteJWKSet(
+      new URL(`${url}/auth/v1/.well-known/jwks.json`),
+    );
     const { payload } = await jwtVerify(token, this.jwks);
     return payload;
   }

@@ -1,4 +1,10 @@
-import { IsOptional, IsString, IsUUID, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 import { PaginationQuery } from '../../common/dto/pagination.dto';
 
 export class ListProductsQuery extends PaginationQuery {

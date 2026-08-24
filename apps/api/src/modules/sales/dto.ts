@@ -1,7 +1,17 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsEnum, IsInt,
-  IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested,
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  ValidateNested,
 } from 'class-validator';
 import { PaginationQuery } from '../../common/dto/pagination.dto';
 
@@ -30,20 +40,31 @@ export class CreateSaleDto {
 
   @IsDateString() sold_at: string;
 
-  @IsOptional() @IsEnum(PaymentMethod) payment_method: PaymentMethod = PaymentMethod.cash;
+  @IsOptional() @IsEnum(PaymentMethod) payment_method: PaymentMethod =
+    PaymentMethod.cash;
 
   @Type(() => Number) @IsInt() @Min(0) subtotal_cents: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) discount_cents = 0;
   @Type(() => Number) @IsInt() @Min(0) total_cents: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) amount_tendered_cents?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  amount_tendered_cents?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) change_cents?: number;
 
-  @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => SaleItemDto)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => SaleItemDto)
   items: SaleItemDto[];
 }
 
 export class BatchSalesDto {
-  @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => CreateSaleDto)
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => CreateSaleDto)
   sales: CreateSaleDto[];
 }
 

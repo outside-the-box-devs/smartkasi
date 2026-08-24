@@ -57,7 +57,10 @@ export class CatalogService {
     });
     if (!row) throw ApiError.notFound('Product');
 
-    return { ...presentProduct(row), price_stats: await this.priceStats(productId) };
+    return {
+      ...presentProduct(row),
+      price_stats: await this.priceStats(productId),
+    };
   }
 
   /**
@@ -79,13 +82,20 @@ export class CatalogService {
     });
 
     if (offers.length === 0) {
-      return { offer_count: 0, avg_price_cents: 0, min_price_cents: 0, max_price_cents: 0 };
+      return {
+        offer_count: 0,
+        avg_price_cents: 0,
+        min_price_cents: 0,
+        max_price_cents: 0,
+      };
     }
 
     const prices = offers.map((o) => Number(o.priceCents));
     return {
       offer_count: prices.length,
-      avg_price_cents: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+      avg_price_cents: Math.round(
+        prices.reduce((a, b) => a + b, 0) / prices.length,
+      ),
       min_price_cents: Math.min(...prices),
       max_price_cents: Math.max(...prices),
     };
@@ -96,7 +106,9 @@ export class CatalogService {
    * which the controller maps to 200 rather than 201. A scan that misses in one
    * shop must not fail because another shop already added the item.
    */
-  async create(dto: CreateProductDto): Promise<{ created: boolean; product: unknown }> {
+  async create(
+    dto: CreateProductDto,
+  ): Promise<{ created: boolean; product: unknown }> {
     if (!dto.barcode && !dto.shop_id) {
       throw new ApiError(
         ApiErrorCode.VALIDATION_FAILED,
@@ -111,7 +123,8 @@ export class CatalogService {
         where: { barcode: dto.barcode },
         select: { id: true },
       });
-      if (existing) return { created: false, product: await this.get(existing.id) };
+      if (existing)
+        return { created: false, product: await this.get(existing.id) };
     }
 
     const created = await this.prisma.product.create({

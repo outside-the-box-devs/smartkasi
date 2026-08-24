@@ -17,6 +17,7 @@ only SmartKasi API, and every delivery endpoint on it is real.
 | Building the Next.js dashboard | Same, plus `packages/contract/openapi.yaml` for typed client generation |
 | Building the backend | [`apps/api/README.md`](apps/api/README.md) and [`docs/ERD.md`](docs/ERD.md) |
 | Deciding what to cut tonight | [`docs/BUILD_ORDER.md`](docs/BUILD_ORDER.md) |
+| About to open a pull request | [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch names, the schema-mirror steps, what to verify by hand |
 | Testing a running API | [`docs/TESTING.md`](docs/TESTING.md) — or just `cd apps/api && npm run smoke:auth` |
 
 ## Layout

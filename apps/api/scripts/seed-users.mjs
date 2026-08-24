@@ -39,6 +39,10 @@ const USERS = [
   ['11111111-0000-4000-8000-000000000003', 'naledi@smartkasi.test',   'Naledi Khumalo', 'shop_owner'],
   ['22222222-0000-4000-8000-000000000002', 'customer@smartkasi.test', 'Lerato Mokoena', 'customer'],
   ['33333333-0000-4000-8000-000000000003', 'courier@smartkasi.test',  'Thabo Mahlangu', 'courier'],
+  // app_metadata.role is belt-and-braces now: public.custom_access_token_hook
+  // computes the claim from profiles.role at mint time and wins. It stays here
+  // so that disabling the hook is a clean rollback rather than an outage.
+  ['44444444-0000-4000-8000-000000000004', 'admin@smartkasi.test',    'Ayanda Mokwena', 'admin'],
 ];
 
 const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
