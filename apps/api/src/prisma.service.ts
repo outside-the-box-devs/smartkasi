@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from './generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+
+const logger = new Logger('PrismaPool');
 
 @Injectable()
 export class PrismaService extends PrismaClient {
@@ -23,7 +25,31 @@ export class PrismaService extends PrismaClient {
       );
     }
 
-    const adapter = new PrismaPg({ connectionString });
+    const adapter = new PrismaPg(
+      {
+        connectionString,
+        // Supabase's transaction pooler sits behind a NAT that silently reaps
+        // quiet sockets. Without TCP keepalives a pooled client looks perfectly
+        // healthy right up until the first query on it fails with "Connection
+        // terminated unexpectedly" — which is exactly how this API died once
+        // mid-batch.
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10_000,
+        // Retire our own idle clients well inside the pooler's cutoff rather
+        // than waiting to be told the hard way.
+        idleTimeoutMillis: 10_000,
+        connectionTimeoutMillis: 10_000,
+        max: 10,
+      },
+      {
+        // The adapter already attaches a listener for errors raised by an IDLE
+        // pooled client and then forwards them here. Leave this unset and they
+        // are debug-only, which is how a dropped connection stays invisible
+        // until it takes a request down with it.
+        onPoolError: (err) =>
+          logger.warn(`pooled client dropped: ${err.message}`),
+      },
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     super({ adapter });
