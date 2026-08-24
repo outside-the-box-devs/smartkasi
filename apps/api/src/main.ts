@@ -22,6 +22,30 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
   return Number(this);
 };
 
+/**
+ * An unhandled rejection must not take the whole API down.
+ *
+ * Node's default — print and exit — is usually right, but the rejections this
+ * process actually sees come from Prisma retiring a transaction on a pooled
+ * connection Supabase has already closed. That rejection is raised from a
+ * timer, so there is nobody left to await it, and it is raised *after* the
+ * request that triggered it has already failed and already been answered.
+ * Exiting on top of that drops every other in-flight request in order to
+ * report an error nobody is waiting for.
+ *
+ * Seen in the wild: a POS batch flush logged its per-sale failure correctly and
+ * returned a 207, and the process then died on the rollback that followed.
+ *
+ * This is a net, not a licence. It logs at error level with the full stack so
+ * these stay loud — if one shows up for any reason other than a dropped
+ * connection, fix the cause rather than trusting this to absorb it.
+ */
+process.on('unhandledRejection', (reason: unknown) => {
+  const detail =
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  Logger.error(detail, 'UnhandledRejection');
+});
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const prefix = process.env.API_PREFIX ?? 'v1';
