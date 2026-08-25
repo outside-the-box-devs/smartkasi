@@ -1552,7 +1552,7 @@ paths:
               type: object
               required: [purpose, content_type]
               properties:
-                purpose: { type: string, enum: [shop_logo, product_image, flyer, licence_doc, delivery_proof, avatar] }
+                purpose: { type: string, enum: [shop_logo, product_image, flyer, licence_doc, courier_id_doc, delivery_proof, avatar] }
                 content_type: { type: string, enum: ["image/jpeg", "image/png", "image/webp", "application/pdf"] }
                 shop_id: { type: string, format: uuid }
       responses:
@@ -1661,6 +1661,157 @@ paths:
                 eta_band: 10-20min
                 courier: { display_name: "Thabo M.", mode: bicycle, rating_avg: 4.8 }
                 updated_at: "2026-08-22T09:41:00Z"
+
+  /courier/application:
+    post:
+      tags: [Delivery]
+      summary: "[LIVE] Apply to be a courier"
+      description: |
+        Registers the signed-in user as a courier. Upload the ID document to R2
+        first via `POST /uploads/presign` with `purpose: courier_id_doc`, then
+        send the returned `public_url` here.
+
+        **Does not make you verified.** The account is created `pending` and
+        `is_online: false`; verification is a platform action behind the `admin`
+        role, never self-service. Until it happens `GET /courier/jobs` answers
+        `422 COURIER_NOT_AVAILABLE`.
+
+        **Idempotent by user.** Re-posting replaces the application rather than
+        returning a `409` — a first ID photo that came out unreadable has to be
+        replaceable. If the account was already verified and this changes `mode`,
+        `vehicle_reg` or `id_doc_url`, it drops back to `pending` and the
+        response says so in `verification_reset`.
+
+        Applying promotes a `customer` to the `courier` role. Like every role
+        change that takes effect **on the next token** — refresh the Supabase
+        session before calling `/courier/jobs`, which is role-gated. A user who
+        is already `shop_owner`, `shop_staff` or `admin` keeps that role: this
+        API has one role per user, so they get a courier record they cannot yet
+        use the job board with.
+
+        Unlike the rest of `/courier/*` this route does **not** require the
+        `courier` role — applying cannot require already being one.
+      operationId: applyAsCourier
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourierApplication" }
+            example:
+              mode: bicycle
+              max_radius_m: 2000
+              id_doc_url: https://cdn.smartkasi.co.za/courier_id_doc/global/9f2.jpg
+      responses:
+        "202":
+          description: Application accepted, awaiting verification.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+        "422":
+          description: |
+            `VALIDATION_FAILED` — the radius exceeds the cap for the mode
+            (2000 m for `foot` and `bicycle`), or `mode: vehicle` arrived
+            without a `vehicle_reg`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /courier/me:
+    get:
+      tags: [Delivery]
+      summary: "[LIVE] The signed-in courier's own record"
+      description: |
+        The courier app's home screen. `404` means no application has been
+        submitted — show the apply form.
+
+        Gated on the `couriers` row rather than the `courier` role claim, so it
+        answers correctly in the window after applying and before the token
+        refreshes. Returns only the caller's own record.
+      operationId: getMyCourierProfile
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: The courier record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Delivery]
+      summary: "[LIVE] Update courier details"
+      description: |
+        Partial update; omitted fields are left alone.
+
+        `mode`, `vehicle_reg` and `id_doc_url` are the fields a human reviewed.
+        Changing any of them on a verified account sends it back to `pending` —
+        otherwise getting verified on foot and then switching to `vehicle` would
+        be a self-service promotion past the vehicle checks. `max_radius_m` is
+        the courier's own preference, is reviewed by nobody, and never costs
+        them their verification.
+
+        Switching away from `vehicle` clears `vehicle_reg`.
+      operationId: updateMyCourierProfile
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourierProfileUpdate" }
+      responses:
+        "200":
+          description: Updated. Check `verification_reset`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`VALIDATION_FAILED` — radius over the cap for the mode, or `vehicle` without a registration."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /courier/online:
+    post:
+      tags: [Delivery]
+      summary: "[LIVE] Go online"
+      description: |
+        Sets `is_online: true`. Idempotent — a retry on a bad connection cannot
+        flip it back.
+
+        Allowed while `pending`. `is_online` is the courier's statement of
+        availability, `is_verified` is the platform's gate, and the job board
+        checks both, so a courier who flipped this on the day they applied
+        starts seeing work the moment they are approved rather than having to
+        guess they need to toggle it again. `can_receive_jobs` in the response
+        is the one flag worth rendering.
+      operationId: courierGoOnline
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: Availability updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /courier/offline:
+    post:
+      tags: [Delivery]
+      summary: "[LIVE] Go offline"
+      description: |
+        Sets `is_online: false`. Idempotent. Removes the courier from job
+        matching immediately; jobs already accepted are unaffected and still
+        have to be collected and handed over.
+      operationId: courierGoOffline
+      x-smartkasi-status: LIVE
+      responses:
+        "200":
+          description: Availability updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /courier/jobs:
     get:
@@ -2664,6 +2815,101 @@ components:
             customer_first_name: { type: string }
             customer_phone: { type: string, nullable: true }
         updated_at: { type: string, format: date-time }
+
+    CourierApplication:
+      type: object
+      required: [mode, id_doc_url]
+      properties:
+        mode: { $ref: "#/components/schemas/CourierMode" }
+        max_radius_m:
+          type: integer
+          minimum: 250
+          maximum: 50000
+          description: |
+            How far from the courier's home address a job may start. Omit it for
+            the default for the mode — 2000 m on foot or bicycle, 5000 m in a
+            vehicle. Capped at 2000 m for `foot` and `bicycle`; over the cap is
+            a `422`, not a silent clamp.
+        vehicle_reg:
+          type: string
+          maxLength: 20
+          description: "Required when `mode` is `vehicle`, refused otherwise. Stored upper-cased."
+        id_doc_url:
+          type: string
+          format: uri
+          description: "Required. From `POST /uploads/presign` with `purpose: courier_id_doc`."
+
+    CourierProfileUpdate:
+      type: object
+      description: "All optional. `mode`, `vehicle_reg` and `id_doc_url` reset verification; `max_radius_m` does not."
+      properties:
+        mode: { $ref: "#/components/schemas/CourierMode" }
+        max_radius_m: { type: integer, minimum: 250, maximum: 50000 }
+        vehicle_reg: { type: string, maxLength: 20 }
+        id_doc_url: { type: string, format: uri }
+
+    CourierProfile:
+      type: object
+      description: |
+        A courier's own record. Returned only to that courier and to an admin —
+        it carries `id_doc_url`, which must never appear in a job board, a
+        delivery, or any other list.
+      required: [id, mode, verification_status, is_online, can_receive_jobs]
+      properties:
+        id: { type: string, format: uuid, description: "Same as the profile id." }
+        mode: { $ref: "#/components/schemas/CourierMode" }
+        max_radius_m: { type: integer }
+        effective_radius_m:
+          type: integer
+          description: "`max_radius_m` after the per-mode cap. What job matching actually uses."
+        vehicle_reg: { type: string, nullable: true }
+        id_doc_url: { type: string, format: uri, nullable: true }
+        verification_status:
+          type: string
+          enum: [pending, verified]
+          description: |
+            There is no `rejected` state — `couriers.is_verified` is a boolean,
+            so a declined application is indistinguishable from one still in the
+            queue. Do not build a rejection screen against this yet.
+        is_verified: { type: boolean }
+        is_online: { type: boolean }
+        can_receive_jobs:
+          type: boolean
+          description: "`is_verified && is_online`. Render this rather than recomputing it."
+        blocked_reason:
+          type: string
+          nullable: true
+          description: "Why not, in words for the courier. Null when `can_receive_jobs` is true."
+        rating_avg: { type: number, nullable: true }
+        verification_reset:
+          type: boolean
+          description: "True when this write dropped a verified account back to pending."
+        verification_reset_by:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: "Which reviewed fields caused it."
+        role_takes_effect:
+          type: string
+          description: "Always \"on the next token this user is issued\". Refresh the Supabase session before calling the role-gated job routes."
+        applied_at: { type: string, format: date-time }
+      example:
+        id: 33333333-0000-4000-8000-000000000003
+        mode: bicycle
+        max_radius_m: 2000
+        effective_radius_m: 2000
+        vehicle_reg: null
+        id_doc_url: https://cdn.smartkasi.co.za/courier_id_doc/global/9f2.jpg
+        verification_status: pending
+        is_verified: false
+        is_online: false
+        can_receive_jobs: false
+        blocked_reason: Your courier account is not verified yet
+        rating_avg: null
+        verification_reset: false
+        verification_reset_by: null
+        role_takes_effect: on the next token this user is issued
+        applied_at: "2026-08-25T07:10:00Z"
 
     CourierJob:
       type: object

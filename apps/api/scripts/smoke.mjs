@@ -692,6 +692,150 @@ await checkAuth('handover completes the order', async () => {
   return `delivered, order completed, courier earned ${rands(payoutCents)}`;
 });
 
+// --- courier onboarding ----------------------------------------------------
+// Issue #25. The couriers table carried mode, radius, verification and
+// is_online from day one and nothing could write a row, so the only courier
+// that has ever existed is the one db/seed.sql inserts by hand — and is_online
+// was a flag the matching query read and nobody could set.
+//
+// Runs against a throwaway GoTrue user rather than Lerato: applying promotes a
+// customer to `courier` and writes a couriers row, and doing that to demo data
+// would quietly break the role-claim check above on the NEXT run (it asserts
+// Lerato clears the role gate and stops at the missing courier record). Deleting
+// the user at the end cascades the profile and the couriers row with it.
+
+console.log('\nCourier onboarding');
+
+const applicant = {
+  id: randomUUID(),
+  email: `smoke-courier-${Date.now()}@smartkasi.test`,
+  password: 'Password123!',
+};
+const ID_DOC = 'https://cdn.smartkasi.co.za/courier_id_doc/global/smoke-1.jpg';
+let applicantToken;
+
+await checkRole('a customer can apply to be a courier', async () => {
+  const created = await gotrue('/auth/v1/admin/users', {
+    method: 'POST',
+    body: {
+      id: applicant.id,
+      email: applicant.email,
+      password: applicant.password,
+      email_confirm: true,
+      user_metadata: { full_name: 'Smoke Applicant' },
+      app_metadata: { role: 'customer' },
+    },
+  });
+  expect(created.status === 200 || created.status === 201, `admin create returned ${created.status} ${created.raw.slice(0, 160)}`);
+  applicantToken = await signIn(applicant.email, applicant.password);
+
+  const before = await api('/courier/me', { token: applicantToken });
+  expect(before.status === 404, `a user who has never applied got ${before.status}, not 404`);
+
+  // The radius cap is refused, not silently clamped: the job board applies
+  // Math.min anyway, so storing 8000 would tell a foot courier they cover 8 km
+  // while matching them on 2.
+  const tooFar = await api('/courier/application', {
+    method: 'POST', token: applicantToken,
+    body: { mode: 'foot', max_radius_m: 8000, id_doc_url: ID_DOC },
+  });
+  expect(tooFar.status === 422, `8 km on foot returned ${tooFar.status}, expected 422`);
+
+  const noReg = await api('/courier/application', {
+    method: 'POST', token: applicantToken,
+    body: { mode: 'vehicle', id_doc_url: ID_DOC },
+  });
+  expect(noReg.status === 422, `a vehicle courier with no registration returned ${noReg.status}, expected 422`);
+
+  const r = await api('/courier/application', {
+    method: 'POST', token: applicantToken,
+    body: { mode: 'bicycle', max_radius_m: 2000, id_doc_url: ID_DOC },
+  });
+  expect(r.status === 202, `status ${r.status} ${JSON.stringify(r.body).slice(0, 160)}`);
+  expect(r.body.verification_status === 'pending', `a fresh application is ${r.body.verification_status} — applying must never grant verification`);
+  expect(r.body.is_online === false, 'a fresh application came back online');
+  expect(r.body.can_receive_jobs === false, 'an unverified courier can_receive_jobs');
+  return 'pending, offline, matched by nothing';
+});
+
+await checkRole('applying promotes the customer to courier', async () => {
+  if (!applicantToken) return 'skipped — the application above did not run';
+  const fresh = await signIn(applicant.email, applicant.password);
+  expect(claimRole(fresh) === 'courier', `the next token says ${claimRole(fresh)} — POST /courier/application did not write profiles.role`);
+  applicantToken = fresh;
+  return 'customer -> courier on the next token';
+});
+
+await checkRole('an unverified courier can go online and still not be matched', async () => {
+  if (!applicantToken) return 'skipped — the application above did not run';
+
+  // Allowed while pending on purpose. is_online is the courier's own statement
+  // of availability; is_verified is the platform's gate.
+  const on = await api('/courier/online', { method: 'POST', token: applicantToken });
+  expect(on.status === 200, `going online returned ${on.status} ${JSON.stringify(on.body).slice(0, 140)}`);
+  expect(on.body.is_online === true, 'is_online did not stick — this is the flag the matching query reads');
+  expect(on.body.can_receive_jobs === false, 'an unverified courier is being offered work');
+
+  const jobs = await api('/courier/jobs', { token: applicantToken });
+  expect(jobs.status === 422, `the job board returned ${jobs.status} to an unverified courier, expected 422`);
+  expect(jobs.body?.error?.code === 'COURIER_NOT_AVAILABLE', `code is ${jobs.body?.error?.code}`);
+  return 'online, still off the board until a human verifies';
+});
+
+await checkRole('verified + offline is off the board, verified + online is on it', async () => {
+  if (!applicantToken) return 'skipped — the application above did not run';
+
+  // Verification is a platform action and there is no endpoint for it yet
+  // (#26, #27) — this is the operator console standing in as one UPDATE.
+  await pgOne(`update public.couriers set is_verified = true where id = $1`, [applicant.id]);
+
+  const online = await api('/courier/jobs', { token: applicantToken });
+  expect(online.status === 200, `a verified, online courier got ${online.status} on the board`);
+
+  const off = await api('/courier/offline', { method: 'POST', token: applicantToken });
+  expect(off.status === 200, `going offline returned ${off.status}`);
+  expect(off.body.can_receive_jobs === false, 'an offline courier can_receive_jobs');
+
+  const blocked = await api('/courier/jobs', { token: applicantToken });
+  expect(blocked.status === 422, `an offline courier got ${blocked.status} on the board, expected 422`);
+  return '200 online, 422 offline';
+}, { needsDb: true });
+
+await checkRole('changing a reviewed field costs the verification, changing the radius does not', async () => {
+  if (!applicantToken) return 'skipped — the application above did not run';
+
+  const radius = await api('/courier/me', {
+    method: 'PATCH', token: applicantToken, body: { max_radius_m: 1500 },
+  });
+  expect(radius.status === 200, `status ${radius.status}`);
+  expect(radius.body.is_verified === true, 'nudging the radius de-verified the courier — nobody reviews that field');
+  expect(radius.body.max_radius_m === 1500, `max_radius_m is ${radius.body.max_radius_m}`);
+
+  // The one that matters: verified on a bicycle, then switch to a vehicle. If
+  // this kept is_verified it would be a self-service promotion past whatever
+  // check a vehicle is meant to get.
+  const upgrade = await api('/courier/me', {
+    method: 'PATCH', token: applicantToken, body: { mode: 'vehicle', vehicle_reg: 'CA 123-456' },
+  });
+  expect(upgrade.status === 200, `status ${upgrade.status} ${JSON.stringify(upgrade.body).slice(0, 160)}`);
+  expect(upgrade.body.is_verified === false, 'bicycle -> vehicle kept the verification a human gave to a bicycle');
+  expect(upgrade.body.verification_reset === true, 'verification_reset is false — the client has no way to warn the courier');
+  expect(upgrade.body.vehicle_reg === 'CA 123-456', `vehicle_reg is ${upgrade.body.vehicle_reg}`);
+
+  const back = await api('/courier/me', {
+    method: 'PATCH', token: applicantToken, body: { mode: 'foot' },
+  });
+  expect(back.body.vehicle_reg === null, 'switching off vehicle left a stale registration behind');
+  return 'radius free, mode/reg/ID back to pending';
+}, { needsDb: true });
+
+// Disposable, like the role-claim probe. Deleting the auth user cascades the
+// profile, which cascades the couriers row.
+if (SB_URL && SB_KEY && !PUBLIC_ONLY) {
+  await gotrue(`/auth/v1/admin/users/${applicant.id}`, { method: 'DELETE' }).catch(() => {});
+}
+await pgEnd();
+
 console.log('\nStubs (shape only — values are fake)');
 await checkAuth('AI dish endpoint is marked as a stub', async () => {
   const r = await api('/ai/dish-ingredients', { method: 'POST', token: TOKENS.customer, body: { dish: 'pap and chakalaka' } });

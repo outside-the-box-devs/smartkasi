@@ -10,6 +10,13 @@ export enum UploadPurpose {
   product_image = 'product_image',
   flyer = 'flyer',
   licence_doc = 'licence_doc',
+  // A courier's ID document, for verification. Like `licence_doc` this lands in
+  // the same bucket as everything else and is reachable by anyone holding the
+  // URL — the key is a random UUID, so it is unguessable rather than private.
+  // Never put one of these in a list response; only the courier who owns it and
+  // an admin ever see it. A private bucket for the two identity purposes is the
+  // real fix and is tracked separately.
+  courier_id_doc = 'courier_id_doc',
   delivery_proof = 'delivery_proof',
   avatar = 'avatar',
 }

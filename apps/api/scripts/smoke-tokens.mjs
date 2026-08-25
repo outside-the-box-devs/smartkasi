@@ -20,11 +20,25 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-for (const line of readFileSync(resolve(here, '../.env'), 'utf8').split('\n')) {
-  const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
-  if (!m) continue;
-  const value = m[2].trim().replace(/\s+#.*$/, '').replace(/^["']|["']$/g, '');
-  if (!(m[1] in process.env)) process.env[m[1]] = value;
+// '.env.local' first, matching app.module.ts's envFilePath and smoke.mjs. It
+// used to read only '.env', which meant that pointing the API at the local
+// stack with a .env.local left this script still signing users in against the
+// hosted project — every authenticated check then failed with a 401 that looked
+// like a broken guard rather than a token minted by the wrong Supabase.
+// First writer wins here, so a real environment variable still overrides both.
+for (const file of ['../.env.local', '../.env']) {
+  let contents;
+  try {
+    contents = readFileSync(resolve(here, file), 'utf8');
+  } catch {
+    continue; // .env.local is optional
+  }
+  for (const line of contents.split('\n')) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const value = m[2].trim().replace(/\s+#.*$/, '').replace(/^["']|["']$/g, '');
+    if (!(m[1] in process.env)) process.env[m[1]] = value;
+  }
 }
 
 const url = process.env.SUPABASE_URL;

@@ -142,6 +142,10 @@ Run against a seeded Postgres, not just written:
 - Role claims: an Admin-API courier's **first** token says `courier`; changing
   `profiles.role` reaches the next token with no refresh; and a self-service
   signup sending `data: {"role":"admin"}` still comes back as `customer`
+- Courier onboarding: a customer applies and lands `pending` + offline, the role
+  follows on the next token, an unverified courier may go online and still gets
+  `422` from the board, an offline verified one likewise — and switching mode
+  from bicycle to vehicle drops the verification a human gave to a bicycle
 
 ## Layout
 
@@ -161,7 +165,7 @@ src/
   modules/
     health me shops catalog search inventory sync sales orders flyers uploads
     admin/                 role management — POST/PATCH /admin/users/{id}/role
-    delivery/              REAL — dispatch, courier job board, collect, handover
+    delivery/              REAL — onboarding, dispatch, courier job board, collect, handover
     stubs/                 ai, payments only — fixed responses, delete when real
 ```
 
@@ -170,6 +174,19 @@ src/
 (`GET /v1/courier/jobs`, `accept`, `collect`, `deliver`), backed by real rows and
 real state transitions. The Prism mock was retired in the same change — there is
 no second API to point a client at any more.
+
+It also owns the supply side as of 25 Aug (#25): `POST /v1/courier/application`,
+`GET`/`PATCH /v1/courier/me`, `POST /v1/courier/online` and `/offline`. Those
+live in a **second controller** on the same prefix, `CourierProfileController`,
+with no class-level `@Roles('courier')` — applying cannot require the role you
+are applying for, and the role a successful application grants only reaches the
+caller on their next token. They authorise on the `couriers` row instead and
+only ever touch the caller's own record. `CourierController` keeps its role gate
+because its responses carry customer addresses and phone numbers.
+
+Nothing sets `is_verified` yet. That is a platform action waiting on the
+operator console (#26, #27), so today an applicant stays `pending` for ever and
+the seeded Thabo is the only courier who can work.
 
 ## Decisions you should not undo without reading this
 
