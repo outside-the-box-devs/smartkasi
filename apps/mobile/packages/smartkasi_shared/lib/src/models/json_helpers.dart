@@ -15,6 +15,14 @@ List<JsonMap> asMapList(Object? value) {
   return const [];
 }
 
+/// A JSON array of scalars, e.g. the tombstone ids in a sync delta.
+List<String> asStringList(Object? value) {
+  if (value is List) {
+    return value.where((e) => e != null).map((e) => e.toString()).toList();
+  }
+  return const [];
+}
+
 String text(Object? value, [String fallback = '']) =>
     value == null ? fallback : value.toString();
 

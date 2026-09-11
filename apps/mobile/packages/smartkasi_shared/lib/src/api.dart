@@ -248,6 +248,20 @@ class SmartKasiApi {
     auth: true,
   );
 
+  /// Delta pull for the offline till.
+  ///
+  /// Pass the previous response's `server_time` back as [since]; omit it for a
+  /// full snapshot. The cursor is always the server's clock, never the device's
+  /// — see [SyncDelta].
+  Future<SyncDelta> syncShop(String shopId, {String? since}) async =>
+      SyncDelta.fromJson(
+        await getJson(
+          '/shops/$shopId/sync',
+          query: {'since': since},
+          auth: true,
+        ),
+      );
+
   Future<JsonMap> createSale(String shopId, Map<String, Object?> sale) =>
       postJson('/shops/$shopId/sales', body: sale, auth: true);
 
@@ -400,16 +414,18 @@ class SmartKasiApi {
   /// [shopId] names which stop was collected. Omitting it means "the next
   /// uncollected stop in sequence", which is what a single Collected button
   /// means on a one-shop run.
-  Future<CourierDelivery> collectJob(String deliveryId, {String? shopId}) async =>
-      CourierDelivery.fromJson(
-        await postJson(
-          '/courier/jobs/$deliveryId/collect',
-          body: shopId == null
-              ? <String, Object?>{}
-              : <String, Object?>{'shop_id': shopId},
-          auth: true,
-        ),
-      );
+  Future<CourierDelivery> collectJob(
+    String deliveryId, {
+    String? shopId,
+  }) async => CourierDelivery.fromJson(
+    await postJson(
+      '/courier/jobs/$deliveryId/collect',
+      body: shopId == null
+          ? <String, Object?>{}
+          : <String, Object?>{'shop_id': shopId},
+      auth: true,
+    ),
+  );
 
   Future<CourierDelivery> deliverJob(String deliveryId) async =>
       CourierDelivery.fromJson(

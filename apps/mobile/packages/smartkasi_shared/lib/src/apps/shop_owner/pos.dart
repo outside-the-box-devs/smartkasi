@@ -87,18 +87,39 @@ class _PosScreenState extends State<_PosScreen> {
     }
   }
 
-  Future<void> _flush() async {
+  /// Push what is queued, then pull what changed.
+  ///
+  /// The pull follows the flush rather than standing alone because a flush is
+  /// exactly what invalidates the local stock counts — the sales that just
+  /// landed are the reason the numbers moved. Pulling first would cache the
+  /// figures this till is about to make stale.
+  Future<void> _sync() async {
     final deps = SmartKasiScope.of(context);
+    final queued = deps.offlineSales.read(widget.shop.id).length;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await deps.offlineSales.flush(widget.shop.id, deps.api);
+      if (queued > 0) {
+        await deps.offlineSales.flush(widget.shop.id, deps.api);
+      }
+      await deps.catalogue.pull(widget.shop.id, deps.api);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Offline sales synced')));
+      // Ask the controller, not the return value: a pull that was skipped
+      // because one was already in flight comes back null and is not a failure.
+      final failed = deps.catalogue.lastError != null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed
+                ? 'No signal — the till is running on its cached catalogue'
+                : queued > 0
+                ? 'Offline sales synced, catalogue up to date'
+                : 'Catalogue up to date',
+          ),
+        ),
+      );
     } catch (error) {
       setState(() => _error = error);
     } finally {
@@ -110,7 +131,11 @@ class _PosScreenState extends State<_PosScreen> {
   Widget build(BuildContext context) {
     final deps = SmartKasiScope.of(context);
     return AnimatedBuilder(
-      animation: Listenable.merge([deps.posCart, deps.offlineSales]),
+      animation: Listenable.merge([
+        deps.posCart,
+        deps.offlineSales,
+        deps.catalogue,
+      ]),
       builder: (context, _) {
         final subtotal = deps.posCart.subtotalCents;
         final tendered =
@@ -232,13 +257,23 @@ class _PosScreenState extends State<_PosScreen> {
               ),
             ),
             KasiCard(
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: Text('$queued queued offline sale(s)')),
-                  OutlinedButton.icon(
-                    onPressed: queued == 0 || _busy ? null : _flush,
-                    icon: const Icon(Icons.cloud_upload),
-                    label: const Text('Sync'),
+                  Row(
+                    children: [
+                      Expanded(child: Text('$queued queued offline sale(s)')),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _sync,
+                        icon: const Icon(Icons.cloud_upload),
+                        label: const Text('Sync'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    deps.catalogue.label(widget.shop.id),
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),

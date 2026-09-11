@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -22,12 +24,27 @@ class ShopOwnerApplication extends StatefulWidget {
   State<ShopOwnerApplication> createState() => _ShopOwnerApplicationState();
 }
 
-class _ShopOwnerApplicationState extends State<ShopOwnerApplication> {
+class _ShopOwnerApplicationState extends State<ShopOwnerApplication>
+    with WidgetsBindingObserver {
   int _index = 0;
   Shop? _shop;
   Future<Shop?>? _shopFuture;
   AuthController? _auth;
   String? _activeShopId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Coming back from the lock screen is the cheapest moment to catch up on a
+  /// price the owner changed on another device — and the most likely one to
+  /// precede a scan.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _pullCatalogue();
+  }
 
   @override
   void didChangeDependencies() {
@@ -42,8 +59,25 @@ class _ShopOwnerApplicationState extends State<ShopOwnerApplication> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _auth?.removeListener(_onAuthChanged);
     super.dispose();
+  }
+
+  /// Warm the till's local catalogue. Fire and forget: [CatalogueSync.pull]
+  /// never throws, and a shop owner opening the app on no signal must still get
+  /// the app rather than an error.
+  ///
+  /// Deferred to after the frame because this runs inside setState and a
+  /// listener rebuilding mid-build is an error.
+  void _pullCatalogue() {
+    final shopId = _activeShopId;
+    if (shopId == null) return;
+    final deps = SmartKasiScope.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(deps.catalogue.pull(shopId, deps.api));
+    });
   }
 
   void _onAuthChanged() {
@@ -65,12 +99,12 @@ class _ShopOwnerApplicationState extends State<ShopOwnerApplication> {
       return;
     }
 
-    if (_activeShopId == nextShopId &&
-        (_shop != null || _shopFuture != null)) {
+    if (_activeShopId == nextShopId && (_shop != null || _shopFuture != null)) {
       return;
     }
 
     _activeShopId = nextShopId;
+    _pullCatalogue();
     _shop = null;
     _shopFuture = deps.api.getShop(nextShopId).then((shop) {
       if (mounted && _activeShopId == shop.id) {

@@ -291,6 +291,160 @@ class OfflineSaleQueue extends ChangeNotifier {
   }
 }
 
+/// The till's local copy of its shop catalogue, kept warm by
+/// `GET /shops/{shopId}/sync`.
+///
+/// Exists so the POS has something to price a scan against when there is no
+/// signal. The endpoint returns each inventory row with its product embedded —
+/// barcode included — so one pull is everything the till needs.
+///
+/// Stored as the server's own JSON rather than re-serialised models: a field
+/// this app does not read yet still survives the round trip, and there is no
+/// second mapping to keep in step with the contract.
+class CatalogueSync extends ChangeNotifier {
+  CatalogueSync(this._prefs);
+
+  final SharedPreferences _prefs;
+
+  /// In flight for any shop. A resume that lands while the launch pull is still
+  /// running must not fire a second request for the same delta.
+  bool isSyncing = false;
+
+  /// The last pull's failure, or null. Being offline is the normal case here,
+  /// not an error state — the cache stays usable and this is only for display.
+  Object? lastError;
+
+  /// Decoded per shop and held, because [label] and [count] are read during
+  /// build — the POS rebuilds on every keystroke in the cash-tendered field,
+  /// and decoding a few hundred rows per frame is not free on a R1500 phone.
+  final _decoded = <String, JsonMap>{};
+
+  String _key(String shopId) => 'smartkasi.catalogue.$shopId';
+
+  JsonMap _read(String shopId) {
+    final hit = _decoded[shopId];
+    if (hit != null) return hit;
+    final raw = _prefs.getString(_key(shopId));
+    if (raw == null || raw.isEmpty) {
+      return _decoded[shopId] = <String, dynamic>{};
+    }
+    final decoded = jsonDecode(raw);
+    return _decoded[shopId] = decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : <String, dynamic>{};
+  }
+
+  /// The `server_time` of the last successful pull, or null for a till that has
+  /// never synced. Passing this back is what makes the next pull a delta.
+  String? cursor(String shopId) => optionalText(_read(shopId)['cursor']);
+
+  DateTime? lastSyncedAt(String shopId) {
+    final value = optionalText(_read(shopId)['synced_at']);
+    return value == null ? null : DateTime.tryParse(value)?.toLocal();
+  }
+
+  List<JsonMap> _rows(String shopId) => asMapList(_read(shopId)['items']);
+
+  List<InventoryItem> items(String shopId) =>
+      _rows(shopId).map(InventoryItem.fromJson).toList();
+
+  int count(String shopId) => _rows(shopId).length;
+
+  bool hasCatalogue(String shopId) => count(shopId) > 0;
+
+  /// Cached lookup for the POS scan path.
+  ///
+  /// Returns null for a barcode this shop has never stocked, which the caller
+  /// must tell apart from a network failure — the two need different words in
+  /// front of a shop owner.
+  InventoryItem? byBarcode(String shopId, String barcode) {
+    final needle = barcode.trim();
+    if (needle.isEmpty) return null;
+    for (final row in _rows(shopId)) {
+      final product = asMap(row['product']);
+      if (optionalText(product['barcode'])?.trim() == needle) {
+        return InventoryItem.fromJson(row);
+      }
+    }
+    return null;
+  }
+
+  /// Pull whatever changed since the stored cursor and fold it into the cache.
+  ///
+  /// Never throws. A till that cannot reach the API on launch must still open
+  /// on the catalogue it already has.
+  Future<SyncDelta?> pull(
+    String shopId,
+    SmartKasiApi api, {
+    bool full = false,
+  }) async {
+    // Already running for some shop — the caller gets the in-flight pull's
+    // outcome by listening, not a second request. [lastError] stays as it was,
+    // so a skipped pull never reads as a failed one.
+    if (isSyncing) return null;
+    isSyncing = true;
+    lastError = null;
+    notifyListeners();
+    try {
+      final delta = await api.syncShop(
+        shopId,
+        since: full ? null : cursor(shopId),
+      );
+      await _apply(shopId, delta);
+      return delta;
+    } catch (error) {
+      lastError = error;
+      return null;
+    } finally {
+      isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _apply(String shopId, SyncDelta delta) async {
+    // A full snapshot replaces; a delta merges. Merging a snapshot would keep
+    // rows the server has since stopped sending.
+    final merged = <String, JsonMap>{};
+    if (!delta.isFullSnapshot) {
+      for (final row in _rows(shopId)) {
+        merged[text(row['id'])] = row;
+      }
+    }
+    for (final row in delta.inventoryJson) {
+      merged[text(row['id'])] = row;
+    }
+    for (final id in delta.deletedShopProductIds) {
+      merged.remove(id);
+    }
+
+    final next = <String, dynamic>{
+      'cursor': delta.serverTime,
+      'synced_at': DateTime.now().toUtc().toIso8601String(),
+      'items': merged.values.toList(),
+    };
+    await _prefs.setString(_key(shopId), jsonEncode(next));
+    _decoded[shopId] = next;
+  }
+
+  /// One line for the POS footer: how much is cached and how stale it is.
+  String label(String shopId) {
+    final total = count(shopId);
+    if (total == 0) {
+      return isSyncing ? 'Loading catalogue…' : 'No catalogue cached yet';
+    }
+    final at = lastSyncedAt(shopId);
+    return '$total items cached${at == null ? '' : ' · synced ${_ago(at)}'}';
+  }
+
+  static String _ago(DateTime at) {
+    final seconds = DateTime.now().difference(at).inSeconds;
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return '${seconds ~/ 60} min ago';
+    if (seconds < 86400) return '${seconds ~/ 3600} h ago';
+    return '${seconds ~/ 86400} d ago';
+  }
+}
+
 class SmartKasiDependencies {
   SmartKasiDependencies({
     required this.config,
@@ -300,6 +454,7 @@ class SmartKasiDependencies {
     required this.cart,
     required this.posCart,
     required this.offlineSales,
+    required this.catalogue,
   });
 
   final SmartKasiConfig config;
@@ -309,6 +464,7 @@ class SmartKasiDependencies {
   final CartController cart;
   final PosCartController posCart;
   final OfflineSaleQueue offlineSales;
+  final CatalogueSync catalogue;
 }
 
 class SmartKasiScope extends InheritedWidget {

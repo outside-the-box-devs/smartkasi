@@ -64,6 +64,7 @@ class _SmartKasiAppState extends State<SmartKasiApp> {
       cart: CartController(),
       posCart: PosCartController(),
       offlineSales: OfflineSaleQueue(widget.prefs),
+      catalogue: CatalogueSync(widget.prefs),
     );
     unawaited(_auth.restore());
   }
