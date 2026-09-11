@@ -1,10 +1,96 @@
-import { IsEnum, IsInt, IsOptional, IsUrl, IsUUID, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum CourierModeDto {
   foot = 'foot',
   bicycle = 'bicycle',
   vehicle = 'vehicle',
+}
+
+/**
+ * Absolute bounds, not the real limit. The per-mode cap in
+ * delivery.presenter.ts (`MODE_MAX_RADIUS_M`) is what actually applies and is
+ * enforced in the service — a foot courier asking for 10 km gets a 422 naming
+ * the cap rather than a silently clamped row that lies back to them.
+ */
+const RADIUS_FLOOR_M = 250;
+const RADIUS_CEILING_M = 50_000;
+
+export class ApplyCourierDto {
+  @IsEnum(CourierModeDto)
+  mode: CourierModeDto;
+
+  /** Omitted means the default for the mode — see `DEFAULT_RADIUS_M`. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(RADIUS_FLOOR_M)
+  @Max(RADIUS_CEILING_M)
+  max_radius_m?: number;
+
+  /**
+   * Required for `vehicle`, refused for the other two — a foot courier has no
+   * registration and storing one would put an unverifiable string in front of
+   * whoever reviews the application.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  @Matches(/^[A-Za-z0-9 -]+$/, {
+    message: 'vehicle_reg may contain only letters, digits, spaces and hyphens',
+  })
+  vehicle_reg?: string;
+
+  /**
+   * Required. Verification is a human reading an ID document, so an
+   * application without one is an application nobody can action. Upload it via
+   * POST /uploads/presign with purpose `courier_id_doc`, then send the
+   * `public_url` back here.
+   */
+  @IsUrl({ require_tld: false })
+  id_doc_url: string;
+}
+
+/**
+ * Everything here is optional; anything omitted is left as it is. Note that
+ * `mode`, `vehicle_reg` and `id_doc_url` are the verification-bearing fields —
+ * changing one of them sends the account back to unverified. `max_radius_m`
+ * does not.
+ */
+export class UpdateCourierDto {
+  @IsOptional()
+  @IsEnum(CourierModeDto)
+  mode?: CourierModeDto;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(RADIUS_FLOOR_M)
+  @Max(RADIUS_CEILING_M)
+  max_radius_m?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  @Matches(/^[A-Za-z0-9 -]+$/, {
+    message: 'vehicle_reg may contain only letters, digits, spaces and hyphens',
+  })
+  vehicle_reg?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  id_doc_url?: string;
 }
 
 export class RequestDeliveryDto {

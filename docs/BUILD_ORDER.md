@@ -125,8 +125,13 @@ Post in the channel:
 - ~~**Delivery.** Stubbed.~~ **Retired 2026-08-23.** Dispatch is real end to
   end: request → job board → accept → collect → handover, with a race-safe
   accept. The courier supply problem is still real, but part of it turned out to
-  be pricing rather than recruitment — see issue #34. There is still no way to
-  *become* a courier: #25.
+  be pricing rather than recruitment — see issue #34. ~~There is still no way to
+  *become* a courier: #25.~~ **Closed 2026-08-25.** `POST /courier/application`
+  registers one and promotes a customer to the role; `/courier/online` and
+  `/courier/offline` set the flag the matching query was already reading. What
+  is still missing is the other half: nothing can set `is_verified`, so an
+  applicant sits `pending` for ever until the operator console lands (#26, #27).
+  Until then the only verified courier is the seeded one.
 - **AI dish→ingredients.** Stubbed. The shape is right; wiring a model tonight
   buys one slide and costs three hours.
 - **Payments.** Cash only. Already the stated plan.

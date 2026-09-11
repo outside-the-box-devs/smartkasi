@@ -54,6 +54,9 @@ assume it will appear.
 | `POST /uploads/presign` | 🟢 LIVE | R2 direct upload. |
 | `POST /orders/{id}/delivery` | 🟢 LIVE | Idempotent on the order. Safe to double-tap. |
 | `GET /deliveries/{id}` | 🟢 LIVE | Customer view. Status + ETA band only — see § Route privacy. |
+| `POST /courier/application` | 🟢 LIVE | Apply. `202`, always `pending`. Not role-gated — applying cannot require the role. |
+| `GET/PATCH /courier/me` | 🟢 LIVE | Own record. `404` = show the apply form. |
+| `POST /courier/online` · `/offline` | 🟢 LIVE | Idempotent availability toggle. Allowed while pending. |
 | `GET /courier/jobs` + accept/collect/deliver | 🟢 LIVE | Matched from the courier's home address. `accept` races → `409`. |
 | `POST /ai/dish-ingredients` | 🔴 **STUB** | Always returns pap & chakalaka. No model call. |
 | `POST /payments/intent` | 🔴 **STUB** | `status: "not_implemented"`. v1 is cash. |
@@ -160,6 +163,22 @@ carry the password into anything real.
 | `shop_staff` | Sell, sync; inventory and voids only if flagged |
 | `courier` | Courier job endpoints. LIVE since the delivery work landed |
 | `admin` | Everything, incl. licence verification |
+
+**Being a courier is two facts, not one.** The `courier` role opens the job
+endpoints; a `couriers` row is what makes you a courier. Granting the role
+alone gets you a `403 "You are not registered as a courier"` from the job board,
+which is correct — the row carries the mode, radius and verification the
+matching query reads. `POST /courier/application` writes the row and promotes a
+`customer` to the role in one transaction, the same way `POST /shops` promotes
+one to `shop_owner`.
+
+Because that promotion only reaches the **next** token, the onboarding routes
+(`/courier/application`, `/courier/me`, `/courier/online`, `/courier/offline`)
+authorise on the `couriers` row instead of the role claim — a `@Roles('courier')`
+gate there would 403 a courier for up to an hour after they applied. They only
+ever read and write the caller's own record. `/courier/jobs` and the job actions
+keep the role gate, because those responses carry customer addresses and phone
+numbers.
 
 **Where the role comes from.** `profiles.role` is the source of truth. It becomes
 the `app_metadata.role` claim through `public.custom_access_token_hook`, which
@@ -318,7 +337,9 @@ Listed so nobody spends tomorrow looking for them.
 | Substitutions | Shops short-ship via `fulfilled[]` instead | v2 |
 | Multi-language | English only | v2 |
 | Refunds | Voids only, at the till | v2 |
-| Courier onboarding / verification | The whole courier supply side is unbuilt | v2 |
+| Courier **verification** | Onboarding is LIVE (#25) — a user can apply, and go online and offline. Approving an application is a platform action and needs the operator console | #26, #27 |
+| Rejecting a courier application | `couriers.is_verified` is a boolean, so `pending` and `rejected` are the same value. An enum mirroring `licence_status` is the fix | with #26 |
+| One user holding two roles | A shop owner who applies to courier gets the record but keeps `shop_owner`, so the role-gated job board stays shut to them | v2 |
 
 ---
 
