@@ -8,6 +8,8 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Smartkasi Delivery</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SmartKasi Courier uses the camera to scan handover codes and photograph proof of delivery.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

@@ -6,3 +6,4 @@ part 'models/inventory_models.dart';
 part 'models/order_models.dart';
 part 'models/delivery_models.dart';
 part 'models/dish_models.dart';
+part 'models/sync_models.dart';
