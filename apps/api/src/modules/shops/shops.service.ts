@@ -9,6 +9,7 @@ import { ShopAccessService } from './shop-access.service';
 import {
   CreateShopDto,
   ListShopsQuery,
+  SetLicenceStatusDto,
   SubmitLicenceDto,
   UpdateShopDto,
 } from './dto';
@@ -204,6 +205,72 @@ export class ShopsService {
     return this.get(shopId);
   }
 
+  /**
+   * The other half of `POST /shops/{shopId}/licence`: a human at SmartKasi
+   * accepts or refuses what the owner submitted. Reachable only through
+   * `PATCH /admin/shops/{shopId}/licence`, whose `@Roles('admin')` is the whole
+   * gate — § 9.3 of the contract says this is never self-service, and until now
+   * there was no endpoint on this side of it at all.
+   *
+   * Anything other than `verified` forces `accepts_orders` off. `update` above
+   * refuses to switch that flag ON without a verified licence, but it only ever
+   * guarded the transition: a shop switched on last month kept taking orders
+   * straight through a revocation, which is the one moment the gate is actually
+   * for.
+   */
+  async setLicenceStatus(shopId: string, dto: SetLicenceStatusDto) {
+    const shop = await this.prisma.shop.findUnique({ where: { id: shopId } });
+    if (!shop) throw ApiError.notFound('Shop');
+
+    const expiresAt = dto.licence_expires_at
+      ? new Date(dto.licence_expires_at)
+      : shop.licenceExpiresAt;
+
+    if (dto.licence_status === 'verified') {
+      // Nothing was submitted, so there is nothing that can have been reviewed.
+      // Without this, `verified` is reachable on a shop that never uploaded a
+      // document, and `accepts_orders` opens on the strength of it.
+      if (!shop.licenceDocUrl || !shop.tradingLicenceNo) {
+        throw ApiError.unprocessable(
+          ApiErrorCode.VALIDATION_FAILED,
+          'This shop has not submitted a trading licence to verify',
+          [
+            {
+              field: 'licence_status',
+              issue: `licence_status is '${shop.licenceStatus}' — no submission to act on`,
+            },
+          ],
+        );
+      }
+
+      // Verifying a licence that has already run out would put the shop into
+      // exactly the state `expired` exists to describe, and open orders on it.
+      if (expiresAt && expiresAt < startOfTodayUtc()) {
+        throw ApiError.unprocessable(
+          ApiErrorCode.VALIDATION_FAILED,
+          'That licence has expired — mark it `expired`, or verify a renewed one',
+          [
+            {
+              field: 'licence_expires_at',
+              issue: `${expiresAt.toISOString().slice(0, 10)} is in the past`,
+            },
+          ],
+        );
+      }
+    }
+
+    await this.prisma.shop.update({
+      where: { id: shopId },
+      data: {
+        licenceStatus: dto.licence_status,
+        ...(dto.licence_expires_at ? { licenceExpiresAt: expiresAt } : {}),
+        ...(dto.licence_status === 'verified' ? {} : { acceptsOrders: false }),
+      },
+    });
+
+    return this.get(shopId);
+  }
+
   private async uniqueSlug(name: string): Promise<string> {
     const base =
       name
@@ -272,4 +339,17 @@ function parseTime(value?: string): Date | undefined {
   if (!value) return undefined;
   const [h, m] = value.split(':');
   return new Date(Date.UTC(1970, 0, 1, Number(h), Number(m ?? 0), 0));
+}
+
+/**
+ * Today at UTC midnight. `licence_expires_at` is a bare `date` column, which
+ * Prisma reads back pinned to UTC midnight, so comparing against a local
+ * `new Date()` would make a licence expire up to a day early or late depending
+ * on which side of UTC the server sits.
+ */
+function startOfTodayUtc(): Date {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
 }

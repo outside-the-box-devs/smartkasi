@@ -41,6 +41,7 @@ const SECRET = process.env.SUPABASE_JWT_SECRET;
 const IDS = {
   owner1: '11111111-0000-4000-8000-000000000001',   // Mama Thoko's
   owner2: '11111111-0000-4000-8000-000000000002',   // Bra Sipho
+  owner3: '11111111-0000-4000-8000-000000000003',   // Naledi, Kasi Fresh — the unlicensed fixture
   customer: '22222222-0000-4000-8000-000000000002', // Lerato
   courier: '33333333-0000-4000-8000-000000000003',  // Thabo, bicycle, verified
   admin: '44444444-0000-4000-8000-000000000004',    // Ayanda, platform operator
@@ -56,6 +57,7 @@ const IDS = {
 const TOKENS = {
   owner1: process.env.OWNER_TOKEN ?? mint(IDS.owner1, 'shop_owner'),
   owner2: process.env.OWNER2_TOKEN ?? mint(IDS.owner2, 'shop_owner'),
+  owner3: process.env.OWNER3_TOKEN ?? mint(IDS.owner3, 'shop_owner'),
   customer: process.env.CUSTOMER_TOKEN ?? mint(IDS.customer, 'customer'),
   courier: process.env.COURIER_TOKEN ?? mint(IDS.courier, 'courier'),
   admin: process.env.ADMIN_TOKEN ?? mint(IDS.admin, 'admin'),
@@ -782,12 +784,38 @@ await checkRole('an unverified courier can go online and still not be matched', 
   return 'online, still off the board until a human verifies';
 });
 
+await checkRole('an applicant cannot verify themselves, an operator can see them waiting', async () => {
+  if (!applicantToken) return 'skipped — the application above did not run';
+
+  // The whole reason verification is a separate role-gated endpoint and not a
+  // field on PATCH /courier/me.
+  const self = await api(`/admin/couriers/${applicant.id}/verify`, {
+    method: 'PATCH', token: applicantToken, body: { is_verified: true },
+  });
+  expect(self.status === 403, `a courier verifying themselves got ${self.status}, expected 403`);
+
+  // A verify endpoint keyed on a uuid is unusable if nothing hands out the
+  // uuids, and there is no other listing of couriers in the API.
+  const queue = await api('/admin/couriers?status=pending', { token: TOKENS.admin });
+  expect(queue.status === 200, `the review queue returned ${queue.status}`);
+  const row = queue.body.data.find((x) => x.id === applicant.id);
+  expect(row, 'the applicant is not in the pending queue — nothing surfaces them to an operator');
+  expect(row.id_doc_url === ID_DOC, `the queue row carries no document to review (${row.id_doc_url})`);
+  return '403 for the applicant, listed for the operator';
+});
+
 await checkRole('verified + offline is off the board, verified + online is on it', async () => {
   if (!applicantToken) return 'skipped — the application above did not run';
 
-  // Verification is a platform action and there is no endpoint for it yet
-  // (#26, #27) — this is the operator console standing in as one UPDATE.
-  await pgOne(`update public.couriers set is_verified = true where id = $1`, [applicant.id]);
+  // Was a raw UPDATE until PATCH /admin/couriers/{id}/verify existed (#26).
+  // Nothing in the API could write this column, so every applicant sat at
+  // pending for ever and the seeded courier was the only one who could work.
+  const approved = await api(`/admin/couriers/${applicant.id}/verify`, {
+    method: 'PATCH', token: TOKENS.admin, body: { is_verified: true },
+  });
+  expect(approved.status === 200, `verifying returned ${approved.status} ${JSON.stringify(approved.body).slice(0, 160)}`);
+  expect(approved.body.is_verified === true, 'the verification did not stick');
+  expect(approved.body.can_receive_jobs === true, 'verified and online, and still can_receive_jobs is false');
 
   const online = await api('/courier/jobs', { token: applicantToken });
   expect(online.status === 200, `a verified, online courier got ${online.status} on the board`);
@@ -799,7 +827,7 @@ await checkRole('verified + offline is off the board, verified + online is on it
   const blocked = await api('/courier/jobs', { token: applicantToken });
   expect(blocked.status === 422, `an offline courier got ${blocked.status} on the board, expected 422`);
   return '200 online, 422 offline';
-}, { needsDb: true });
+});
 
 await checkRole('changing a reviewed field costs the verification, changing the radius does not', async () => {
   if (!applicantToken) return 'skipped — the application above did not run';
@@ -827,7 +855,134 @@ await checkRole('changing a reviewed field costs the verification, changing the 
   });
   expect(back.body.vehicle_reg === null, 'switching off vehicle left a stale registration behind');
   return 'radius free, mode/reg/ID back to pending';
-}, { needsDb: true });
+});
+
+await checkRole('revoking takes a courier off the board without switching them offline', async () => {
+  if (!applicantToken) return 'skipped — the application above did not run';
+
+  // The mode switch above reset the verification, so re-approve to have
+  // something to revoke. `false` is the only revocation path there is:
+  // couriers.is_verified is a boolean, so rejected and pending are one value.
+  await api(`/admin/couriers/${applicant.id}/verify`, {
+    method: 'PATCH', token: TOKENS.admin, body: { is_verified: true },
+  });
+  await api('/courier/online', { method: 'POST', token: applicantToken });
+
+  const revoked = await api(`/admin/couriers/${applicant.id}/verify`, {
+    method: 'PATCH', token: TOKENS.admin, body: { is_verified: false },
+  });
+  expect(revoked.status === 200, `revoking returned ${revoked.status}`);
+  expect(revoked.body.is_verified === false, 'is_verified survived a revocation');
+  // Deliberate: is_online is the courier's own statement of availability, so a
+  // courier re-approved next week does not also have to work out that they
+  // were silently switched off in the meantime.
+  expect(revoked.body.is_online === true, 'revoking silently switched the courier offline');
+  expect(revoked.body.can_receive_jobs === false, 'a revoked courier can_receive_jobs');
+
+  const jobs = await api('/courier/jobs', { token: applicantToken });
+  expect(jobs.status === 422, `a revoked courier got ${jobs.status} on the board, expected 422`);
+  return 'off the board, still holding their own online switch';
+});
+
+// --- trading licence, the admin half ---------------------------------------
+// Issue #26. POST /shops/{id}/licence has accepted submissions since v1 and
+// nothing could act on one, so `accepts_orders` was unreachable for every shop
+// that db/seed.sql did not insert already verified.
+//
+// Runs against Naledi's shop — the unlicensed fixture the checks near the top
+// of this file depend on — and puts it back with one UPDATE at the end. There
+// is deliberately no route back to `none`: "never submitted" is not a decision
+// a reviewer gets to make, so restoring the fixture is a database job.
+
+console.log('\nTrading licence — the admin half');
+
+await checkLicence('a licence nobody submitted cannot be verified', async () => {
+  const r = await api(`/admin/shops/${IDS.shop3}/licence`, {
+    method: 'PATCH', token: TOKENS.admin, body: { licence_status: 'verified' },
+  });
+  expect(r.status === 422, `verifying a shop that never submitted returned ${r.status}, expected 422`);
+  expect(r.body.error?.code === 'VALIDATION_FAILED', `code is ${r.body.error?.code}`);
+
+  const owner = await api(`/admin/shops/${IDS.shop3}/licence`, {
+    method: 'PATCH', token: TOKENS.owner3, body: { licence_status: 'verified' },
+  });
+  expect(owner.status === 403, `a shop owner verifying a licence got ${owner.status}, expected 403`);
+  return '422 for the operator, 403 for anyone else';
+});
+
+await checkLicence('submit, verify, and the shop can finally take orders', async () => {
+  const submitted = await api(`/shops/${IDS.shop3}/licence`, {
+    method: 'POST', token: TOKENS.owner3,
+    body: {
+      trading_licence_no: 'GP/SOW/2026/SMOKE',
+      licence_doc_url: 'https://cdn.smartkasi.co.za/licence_doc/global/smoke-1.pdf',
+      licence_expires_at: '2030-01-31',
+    },
+  });
+  expect(submitted.status === 202, `submitting returned ${submitted.status} ${JSON.stringify(submitted.body).slice(0, 160)}`);
+  expect(submitted.body.licence_status === 'pending', `licence_status is ${submitted.body.licence_status}`);
+
+  const queue = await api('/admin/shops?licence_status=pending', { token: TOKENS.admin });
+  expect(queue.status === 200, `the licence queue returned ${queue.status}`);
+  expect(queue.body.data.some((x) => x.id === IDS.shop3), 'the submission is not in the pending queue');
+
+  // Backdated: verifying a licence that has already run out would put the shop
+  // straight into the state `expired` exists to describe, and open orders on it.
+  const stale = await api(`/admin/shops/${IDS.shop3}/licence`, {
+    method: 'PATCH', token: TOKENS.admin,
+    body: { licence_status: 'verified', licence_expires_at: '2020-01-31' },
+  });
+  expect(stale.status === 422, `verifying an expired licence returned ${stale.status}, expected 422`);
+
+  const verified = await api(`/admin/shops/${IDS.shop3}/licence`, {
+    method: 'PATCH', token: TOKENS.admin, body: { licence_status: 'verified' },
+  });
+  expect(verified.status === 200, `verifying returned ${verified.status} ${JSON.stringify(verified.body).slice(0, 160)}`);
+  expect(verified.body.licence_status === 'verified', `licence_status is ${verified.body.licence_status}`);
+
+  // The point of the whole feature: this 422'd for the life of v1.
+  const open = await api(`/shops/${IDS.shop3}`, {
+    method: 'PATCH', token: TOKENS.owner3, body: { accepts_orders: true, mode: 'full' },
+  });
+  expect(open.status === 200, `switching orders on returned ${open.status} ${JSON.stringify(open.body).slice(0, 160)}`);
+  expect(open.body.accepts_orders === true, 'accepts_orders did not stick on a verified shop');
+  return 'pending -> verified -> accepting orders';
+});
+
+await checkLicence('revoking a licence closes the shop it had already opened', async () => {
+  // PATCH /shops/{id} guards the transition ON. It never guarded a shop that
+  // was already open, so before this endpoint a revoked licence left orders
+  // flowing — the one moment the gate is actually for.
+  const revoked = await api(`/admin/shops/${IDS.shop3}/licence`, {
+    method: 'PATCH', token: TOKENS.admin, body: { licence_status: 'rejected' },
+  });
+  expect(revoked.status === 200, `rejecting returned ${revoked.status}`);
+  expect(revoked.body.licence_status === 'rejected', `licence_status is ${revoked.body.licence_status}`);
+  expect(revoked.body.accepts_orders === false, 'a shop with a rejected licence is still accepting orders');
+
+  const quote = await api('/orders/quote', {
+    method: 'POST', token: TOKENS.customer,
+    body: { fulfilment_type: 'collection', items: [{ shop_id: IDS.shop3, product_id: IDS.maize, qty: 1 }] },
+  });
+  expect(quote.status === 422, `ordering from a rejected shop returned ${quote.status}, expected 422`);
+  return 'rejected, closed, and refusing baskets again';
+});
+
+// Put Naledi's shop back the way db/seed.sql left it, so the checks at the top
+// of this file still describe an unlicensed shop on the next run.
+if (PG_URL && !PUBLIC_ONLY) {
+  await pgOne(
+    `update public.shops
+        set licence_status = 'none',
+            trading_licence_no = null,
+            licence_doc_url = null,
+            licence_expires_at = null,
+            accepts_orders = false,
+            mode = 'advertising_only'
+      where id = $1`,
+    [IDS.shop3],
+  );
+}
 
 // Disposable, like the role-claim probe. Deleting the auth user cascades the
 // profile, which cascades the couriers row.
@@ -882,6 +1037,22 @@ async function checkRole(name, fn, { needsDb = false } = {}) {
   if (PUBLIC_ONLY || missing.length) {
     skipped++;
     const why = PUBLIC_ONLY ? 'needs a token' : `needs ${missing.join(' + ')}`;
+    console.log(`  ${c.y}SKIP${c.x}  ${name}  ${c.d}(${why})${c.x}`);
+    return;
+  }
+  return check(name, fn);
+}
+
+/**
+ * For checks that exercise a route by mutating seeded demo data. They need
+ * DIRECT_URL not to run the route but to put the fixture back afterwards, so
+ * without it the whole group skips rather than leaving the next run a shop
+ * whose licence_status no longer matches what the checks above assert.
+ */
+async function checkLicence(name, fn) {
+  if (PUBLIC_ONLY || !PG_URL) {
+    skipped++;
+    const why = PUBLIC_ONLY ? 'needs a token' : 'needs DIRECT_URL to restore the fixture';
     console.log(`  ${c.y}SKIP${c.x}  ${name}  ${c.d}(${why})${c.x}`);
     return;
   }

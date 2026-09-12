@@ -33,9 +33,11 @@ assume it will appear.
 | `GET /health` | 🟢 LIVE | |
 | `GET /me` · `PATCH /me` | 🟢 LIVE | Call `GET /me` right after Supabase sign-in. |
 | `PATCH /admin/users/{id}/role` | 🟢 LIVE | Admin only. The only way to change a role. Effective on the user's **next** token. |
+| `GET /admin/couriers` · `PATCH /admin/couriers/{id}/verify` | 🟢 LIVE | Admin only. The review queue and the decision. `is_verified: false` is also how you revoke. |
+| `GET /admin/shops` · `PATCH /admin/shops/{id}/licence` | 🟢 LIVE | Admin only. The licence queue and the decision. Anything but `verified` forces `accepts_orders` off. |
 | `GET /shops` | 🟢 LIVE | Geo search. Pass `lat`/`lng` to get `distance_m`. |
 | `POST /shops` · `GET /shops/{id}` · `PATCH /shops/{id}` | 🟢 LIVE | |
-| `POST /shops/{id}/licence` | 🟢 LIVE | Manual admin verification in v1. |
+| `POST /shops/{id}/licence` | 🟢 LIVE | Submission only. `PATCH /admin/shops/{id}/licence` is what decides it. |
 | `GET /products` · `POST /products` · `GET /products/{id}` | 🟢 LIVE | |
 | `GET /products/barcode/{barcode}` | 🟢 LIVE | **POS hot path.** Pass `shop_id`. |
 | `GET /search/products` | 🟢 LIVE | Price comparison across shops. |
@@ -337,8 +339,9 @@ Listed so nobody spends tomorrow looking for them.
 | Substitutions | Shops short-ship via `fulfilled[]` instead | v2 |
 | Multi-language | English only | v2 |
 | Refunds | Voids only, at the till | v2 |
-| Courier **verification** | Onboarding is LIVE (#25) — a user can apply, and go online and offline. Approving an application is a platform action and needs the operator console | #26, #27 |
-| Rejecting a courier application | `couriers.is_verified` is a boolean, so `pending` and `rejected` are the same value. An enum mirroring `licence_status` is the fix | with #26 |
+| Rejecting a courier **distinguishably** | `PATCH /admin/couriers/{id}/verify` is LIVE, but `couriers.is_verified` is a boolean, so `pending` and `rejected` are one stored value. A declined applicant reappears in `GET /admin/couriers?status=pending` and cannot be told why. An enum mirroring `licence_status` is the fix | next |
+| A rejection **reason** | Both decisions are a status and nothing else — there is no column to put words in, on `shops` or on `couriers`. An operator rejects; the applicant sees only that they are not verified | with the enum above |
+| The operator **console** | The API half of verification is LIVE. The UI a human actually works the queue from is not | #27 |
 | One user holding two roles | A shop owner who applies to courier gets the record but keeps `shop_owner`, so the role-gated job board stays shut to them | v2 |
 
 ---
@@ -388,15 +391,32 @@ keeps the worst case inside the radius the courier actually agreed to.
 
 ### 9.3 Who verifies trading licences — DECIDED: platform, never self-service
 
-Verification stays behind the `admin` role and lives in the operator console.
-A shop owner submits; a human at SmartKasi approves or rejects with a reason.
+Verification stays behind the `admin` role. A shop owner submits; a human at
+SmartKasi approves or refuses.
 
-There is currently no endpoint that approves one — `POST /shops/{shopId}/licence`
-accepts a submission that nothing can act on. Tracked in issue #26, with the
-console itself in #27.
+**Both halves now exist.** `POST /shops/{shopId}/licence` submits;
+`PATCH /admin/shops/{shopId}/licence` decides. Until the second one landed the
+first accepted a submission nothing could act on, which meant `accepts_orders`
+was unreachable for every shop `db/seed.sql` did not insert already verified —
+and the same hole ran through courier onboarding, where nothing could write
+`couriers.is_verified` and every applicant sat at `pending` for ever.
 
-The role half of this now exists: `PATCH /admin/users/{id}/role` is the only way
-to move somebody between apps, and it is admin-guarded for the same reason.
+Three things follow from how that decision is stored, and clients should expect
+all three:
+
+- **`none` and `pending` are not settable by a reviewer.** They describe what
+  the shop did — never submitted, just submitted — not what a human decided. A
+  licence that should not have been verified is `rejected`.
+- **Anything other than `verified` forces `accepts_orders` to false.**
+  `PATCH /shops/{shopId}` guards the transition ON; it never guarded a shop that
+  was already open, so a revocation used to leave orders flowing.
+- **There is no reason field.** See § 8.
+
+The role half is unchanged: `PATCH /admin/users/{id}/role` is still the only way
+to move somebody between apps, and is admin-guarded for the same reason.
+
+The operator console itself (#27) is still a to-do — these are the endpoints it
+will be built on, and until it exists an operator works them by hand.
 
 ### 9.4 Barcode format — DECIDED: EAN-13 canonical, normalise on write
 
