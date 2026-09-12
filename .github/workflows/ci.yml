@@ -1,0 +1,110 @@
+name: CI
+
+# Nothing ran on a push or a PR before this file existed, which meant the
+# OpenAPI contract — declared frozen and additive-only, and the interface three
+# client apps are built against — was enforced by memory alone. Issue #32.
+#
+# Make `contract` a required status check in the branch protection rules for
+# `main`. Without that this file reports, but does not gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same PR cancels the first run rather than queueing it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API — types, lint, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the `engines` block in the root package.json.
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # The Prisma client is generated into src/generated and is NOT committed,
+      # so every step below fails without this. No database is touched.
+      - name: Generate Prisma client
+        working-directory: apps/api
+        # generate never opens a connection, but prisma.config.ts reads a URL
+        # out of the environment and there is no .env in CI. A syntactically
+        # valid placeholder keeps the config loader happy.
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+        run: npx prisma generate
+
+      - name: Typecheck
+        working-directory: apps/api
+        run: npm run check-types
+
+      # `npm run lint` is `eslint --fix` and rewrites the working tree — see
+      # CONTRIBUTING.md § 4. CI needs the read-only sibling.
+      - name: Lint
+        working-directory: apps/api
+        run: npm run lint:check
+
+      # Unit tests only. They must not need a database: the integration suite is
+      # `npm run smoke:auth`, and it writes to whatever database it points at,
+      # which is not a thing to run from CI against a shared project.
+      - name: Unit tests
+        working-directory: apps/api
+        run: npm test
+
+  contract:
+    name: Contract — OpenAPI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # The frozen contract. This is the check that should block a merge.
+      - name: Lint OpenAPI
+        run: npm run contract:lint
+
+  mobile:
+    name: Mobile — analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # The SDK is ~1 GB and is otherwise re-downloaded on every run. Free
+          # on a public repo either way, but it is the slowest step by far.
+          cache: true
+
+      # Each app and the shared package resolve independently; there is no
+      # melos/workspace wiring, so they are handled one at a time. Only
+      # smartkasi_shared has a test/ directory today, and `flutter test` on a
+      # package without one is an error rather than a pass — hence the guard.
+      - name: Analyze and test
+        working-directory: apps/mobile
+        run: |
+          set -e
+          for dir in packages/smartkasi_shared customer_app shop_owner_app delivery_app; do
+            echo "::group::$dir"
+            cd "$dir"
+            flutter pub get
+            flutter analyze
+            if [ -d test ]; then flutter test --no-pub; else echo "no test/ — skipping"; fi
+            cd - > /dev/null
+            echo "::endgroup::"
+          done
