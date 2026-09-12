@@ -1,0 +1,38 @@
+# Redocly config for `npm run contract:lint`.
+#
+# This file exists so the warning list means something. Before it, the lint
+# produced 28 warnings, 26 of which were policy notes about decisions we had
+# already made deliberately — and the two real defects in the list went
+# unnoticed for weeks because nobody reads 28 of anything.
+#
+# Rules are turned off here ONLY when the thing they flag is a decision, not a
+# defect. Anything that could be a real problem stays on.
+
+extends:
+  - recommended
+
+rules:
+  # SmartKasi is proprietary. There is no public licence URL to point at, and
+  # inventing one would be worse than omitting it.
+  info-license-strict: off
+
+  # The localhost entry in `servers` is the local development server and is
+  # genuinely useful to a client dev — it is listed second, after the Railway
+  # production URL, precisely so tooling defaults to production.
+  no-server-example.com: off
+
+  # `operation-4xx-response` is deliberately left ON.
+  #
+  # It reported 24 operations with no documented error responses; 23 have since
+  # been filled in from what the framework actually guarantees — 401 from the
+  # global SupabaseAuthGuard, 403 from RolesGuard and ShopAccessService, 400
+  # from the global ValidationPipe and ParseUUIDPipe, 404 from ApiError.notFound.
+  #
+  # ONE warning remains, permanently, and it is correct to leave it:
+  #
+  #   GET /health — it is @Public(), takes no input and has no 4xx. Inventing
+  #   one to get a green run would be the exact class of lie this whole cleanup
+  #   is about. A real failure there is a 5xx, not a 4xx.
+  #
+  # So: a clean run is 1 warning. If you see 2, something regressed. If you are
+  # tempted to switch a rule off to get to 0, fix the spec instead.

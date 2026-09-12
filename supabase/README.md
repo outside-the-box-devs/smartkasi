@@ -1,88 +1,205 @@
-# Supabase — Local & Storage Setup (SmartKasi)
+# Supabase — local stack and storage
 
-> **Agent note:** This is scoped to Supabase-only objects. DB tables are owned by Prisma. See `AGENTS.md:1`.
+**Supabase owns auth and storage on this project. It does not own the database
+schema.** Every `public.*` table, enum, view, trigger and RLS policy belongs to
+Prisma, in `apps/api/prisma/`.
 
-## What lives here
+The contract is [`AGENTS.md`](../AGENTS.md) at the repo root. Read it before
+changing anything in this directory. This file explains what actually lives
+here, why so little of it does, and how to run the local stack.
 
-- `supabase/migrations/20260822000001_storage.sql:1` — **Supabase-only** migration (storage buckets `avatars`, `shop-logos`, `flyers`, `licence-docs`, `delivery-proofs` + `storage.objects` policies). Applied by `supabase db reset` to the local Postgres at `supabase/config.toml:35` `54322`. Never add `public.*` tables/enums here.
-- `supabase/migrations/archive/20260821123132_init_smartkasi.sql:1` — archived former DB mirror (verbatim copy of `db/schema.sql`, 25872 bytes). Now owned by `apps/api/prisma/migrations/20260822000001_init/migration.sql:1`. Do not re-apply.
-- `supabase/seed.sql:1` — Supabase-only placeholder (1-line `select`). DB demo data is seeded via `apps/api/prisma/seed.ts:1` → `db/seed.sql:1` after `apps/api/scripts/seed-users.mjs:1` creates auth users. `supabase/config.toml:66-71` has `[db.seed] enabled = false` so `supabase start` cannot FK-violate on `shops_owner_id_fkey`.
-- `supabase/config.toml:59-71` — `[db.migrations] enabled=true` (storage migrations), `[db.seed] enabled=false` (DB seed via Prisma). `experimental.pgdelta.enabled=true` for `db diff`.
+## What is in this directory
 
-## Why Prisma owns the DB
+| Path | What it is |
+|---|---|
+| `config.toml` | The local stack: API 54321, DB 54322, Studio 54323, mail 54324. Postgres major version 17. |
+| `migrations/20260822000001_storage.sql` | The **only** live migration here. Five `storage.buckets` rows and four `storage.objects` policies. 3,479 bytes. |
+| `migrations/archive/20260821123132_init_smartkasi.sql` | The former DB mirror — a copy of `db/schema.sql` as it stood on 21 Aug 2026. Archived, **do not re-apply.** 28,979 bytes. |
+| `seed.sql` | A one-line placeholder. `[db.seed] enabled = false`, so it does not run anyway. |
+| `snippets/` | Empty. |
 
-Before 2026-08-22, `supabase/migrations/20260821123132_init_smartkasi.sql` was a verbatim copy of `db/schema.sql` and `supabase/seed.sql` was a verbatim copy of `db/seed.sql`. `supabase start` created all `public.*` tables via Supabase, then tried to seed `shops` before `profiles` existed (profiles come from `auth.users` trigger, whose `insert into auth.users` block was commented out for hosted use). Result:
+### The buckets
+
+| Bucket | Public | Size limit | MIME types |
+|---|:--:|---|---|
+| `avatars` | yes | 5 MB | jpeg, png, webp |
+| `shop-logos` | yes | 5 MB | jpeg, png, webp |
+| `flyers` | yes | 10 MB | jpeg, png, webp, pdf |
+| `licence-docs` | **no** | 10 MB | jpeg, png, pdf |
+| `delivery-proofs` | **no** | 5 MB | jpeg, png |
+
+Four policies cover them: public read on public buckets, authenticated upload to
+public buckets, service-role management of private buckets, and owner management
+of own objects. Trading licences and proof-of-delivery photos are private for
+obvious reasons — do not flip them.
+
+Note that the API's own uploads go to **Cloudflare R2** via
+`POST /v1/uploads/presign`, not to these buckets. Both exist; R2 is what the
+presign endpoint hands out.
+
+## Why Prisma owns the database
+
+Before 22 Aug 2026, `supabase/migrations/20260821123132_init_smartkasi.sql` was a
+verbatim copy of `db/schema.sql` and `supabase/seed.sql` was a verbatim copy of
+`db/seed.sql`. So `supabase start` created every `public.*` table itself, then
+tried to seed `shops` — whose `owner_id` is a foreign key to `profiles`, and
+`profiles` rows are trigger-created from `auth.users`, and the seed's
+`insert into auth.users` block was commented out because the hosted path uses
+GoTrue.
 
 ```
-failed to send batch: ERROR: insert or update on table "shops" violates foreign key constraint "shops_owner_id_fkey"
-Pruned containers: [supabase_db_SmartKasi]  # DB destroyed on failure
+failed to send batch: ERROR: insert or update on table "shops"
+  violates foreign key constraint "shops_owner_id_fkey" (SQLSTATE 23503)
+Pruned containers: [supabase_db_SmartKasi]      # the database was destroyed on failure
 ```
 
-Fix 2026-08-22: DB moved to Prisma (`prisma/migrations/20260822000001_init` holds full schema incl. `uuid-ossp` + `pg_trgm`, enums, triggers `443-490`, RLS `500-552`, views `403-439`). Supabase migrations now handle **only** storage buckets + policies. Seeding is two-phase: `supabase start` (storage only) → `prisma migrate deploy` → `seed-users.mjs` (GoTrue) → `prisma db seed`. See `AGENTS.md:2`.
+The first attempted fix re-mirrored the files, which only made the violation
+deterministic. The actual fix was to stop having two owners:
+
+- The database moved to Prisma. `apps/api/prisma/migrations/20260822000001_init`
+  holds the whole schema including the extensions, enums, views, triggers, check
+  constraints and RLS policies Prisma cannot express in `schema.prisma`.
+- The old mirror was archived, and the new Supabase migration creates **only**
+  storage objects.
+- `[db.seed] enabled = false` in `config.toml`, with `sql_paths = []`, so
+  `supabase start` cannot FK-violate even if someone re-enables it by accident.
+
+Seeding is now two-phase and the order is not optional:
+
+```
+supabase start              # storage buckets; public.* is EMPTY
+prisma migrate deploy       # tables, views, triggers, RLS
+npm run db:users            # six auth.users via the GoTrue Admin API
+prisma db seed              # db/seed.sql — demo data, idempotent
+```
+
+Users before data, because shops FK to profiles and profiles come from
+`auth.users`.
 
 ## Commands
 
-```powershell
-# Supabase storage only (DB is empty until Prisma runs)
-npm run supabase:reset   # = npx supabase db reset (applies storage migration only)
-npm run supabase:status  # check DB 54322, API 54321, Studio 54323, Inbucket 54324
-npm run supabase:migration:new  # npx supabase migration new <name> — Supabase-only delta
-npm run supabase:diff    # npx supabase db diff -f <name> — needs Docker + running stack
+Root scripts, all thin wrappers around the Supabase CLI:
+
+```bash
+npm run supabase:start           # npx supabase start
+npm run supabase:stop            # npx supabase stop
+npm run supabase:status          # ports and keys — where you get the local anon key
+npm run supabase:reset           # npx supabase db reset — applies the storage migration only
+npm run supabase:migration:new   # npx supabase migration new <name>  — Supabase-only delta
+npm run supabase:diff            # npx supabase db diff -f <name>     — needs Docker and a running stack
 ```
 
-Requires Docker Desktop. Without it `migration list --local` returns `dial ECONNREFUSED 127.0.0.1:54322` — expected, but migration file must still be non-empty.
+`npm run supabase:types` also exists at the root. It writes to
+`packages/types/supabase.ts`, **a directory that does not exist**, and nothing
+imports its output. Do not rely on it.
 
-For full DB setup after Supabase start:
+Requires Docker Desktop. Without it, `migration list --local` returns
+`dial ECONNREFUSED 127.0.0.1:54322`, which is expected — but the migration file
+must still be non-empty.
 
-```powershell
+After the stack is up, the database is still empty. Finish it from `apps/api`:
+
+```bash
 cd apps/api
-npx prisma migrate deploy  # or npx prisma migrate dev --name <feature> during development
-npm run db:users           # creates 5 auth.users with fixed UUIDs via GoTrue
-npx prisma db seed         # applies db/seed.sql via pg (idempotent)
-# or: npm run db:setup  (= deploy + users + seed)
+npx prisma migrate deploy        # or `migrate dev --name <feature>` while developing
+npm run db:users                 # six auth.users with fixed UUIDs, via GoTrue
+npx prisma db seed               # db/seed.sql, idempotent
 ```
+
+There is no `npm run db:setup`. Earlier revisions of this file and of
+`apps/api/README.md` referenced one; it has never existed in
+`apps/api/package.json`.
 
 ## Adding a migration
 
-### A. DB change (Prisma)
+### A. Database change — Prisma
 
-```powershell
-code apps/api/prisma/schema.prisma
-npx supabase start                  # needs storage buckets, DB empty
+```bash
+# edit apps/api/prisma/schema.prisma
 cd apps/api
-npx prisma migrate dev --name add_<feature>   # review generated migration.sql, add raw SQL for triggers/RLS if needed
-# Mirror the delta by hand into db/schema.sql. Copy-Item is only correct for the INITIAL migration;
-# for a delta it truncates the full-schema file down to that delta.
+npx prisma migrate dev --name add_<feature>
+# review the generated migration.sql; paste in raw SQL for triggers/RLS/views
 npx prisma generate
+# then hand-mirror the same statements into db/schema.sql.
+# That file is a full create-from-nothing script — copying a delta over it
+# truncates it down to the delta.
 ```
 
-Never `supabase migration new` for DB objects.
+Never use `supabase migration new` for a `public.*` object.
 
-### B. Supabase-only change (storage/auth)
+### B. Storage or auth change — Supabase
 
-```powershell
-npx supabase migration new add_<storage_feature>   # storage only!
-# Edit supabase/migrations/<ts>_add_<storage_feature>.sql — ONLY storage/auth objects
+```bash
+npx supabase migration new add_<storage_feature>
+# edit supabase/migrations/<ts>_add_<storage_feature>.sql — storage/auth ONLY
 npx supabase db reset
 ```
 
-Do **not** touch Prisma for storage-only changes. Do **not** copy to `db/schema.sql`.
+Do not touch Prisma for a storage-only change, and do not copy it into
+`db/schema.sql`.
+
+## The access token hook
+
+`config.toml` enables it for the local stack:
+
+```toml
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
+```
+
+The function itself is created by the Prisma migration
+`20260824000001_role_claim_sync`, not by anything in this directory. GoTrue calls
+it at token-mint time and it injects the live `profiles.role` as the
+`app_metadata.role` claim — which is the only thing the API authorises on.
+
+**On the hosted project this is a manual switch**: Dashboard → Authentication →
+Hooks → Custom Access Token. It is not in any file in this repository. Turn it
+off and every new signup silently becomes a permanent `customer`, which is
+exactly the bug the migration replaced. The `Role claims` checks in
+`apps/api/scripts/smoke.mjs` exist to make that loud.
+
+`CONTRIBUTING.md` § 7 lists the rest of the state that lives outside git.
 
 ## Verify
 
 ```powershell
-Get-ChildItem supabase/migrations/*.sql | Select Name, Length  # expect 20260822000001_storage.sql
-Get-Content supabase/migrations/20260822000001_storage.sql | Select-String "storage.buckets"  # must exist
-Get-Content supabase/seed.sql | Select-String "Prisma"  # must mention Prisma, must NOT contain "insert into shops"
-Select-String supabase/config.toml -Pattern "enabled = false" -Context 2  # db.seed false
-Get-ChildItem apps/api/prisma/migrations -Recurse -Filter migration.sql | Select FullName, Length  # expect 20260822000001_init 25872 + 20260824000001_role_claim_sync
-npx supabase start    # should succeed, no FK violation
-npx supabase status   # DB 54322, Studio 54323, API 54321
-cd apps/api; npx prisma migrate status; npx prisma migrate deploy; npx prisma db seed
+Get-ChildItem supabase/migrations/*.sql | Select Name, Length          # only 20260822000001_storage.sql
+Select-String supabase/migrations/20260822000001_storage.sql -Pattern "storage.buckets"
+Select-String supabase/migrations/*.sql -Pattern "create table public\."   # must find NOTHING
+Select-String supabase/config.toml -Pattern "enabled = false" -Context 4   # [db.seed] must be one of them
+npx supabase start                                                      # must succeed, no FK violation
+npx supabase status                                                     # DB 54322, API 54321, Studio 54323
+
+cd apps/api
+npx prisma migrate status
+npx prisma migrate deploy
+npx prisma db seed
+npm run smoke:auth                                                      # 47 checks
 ```
 
-Full contract: `../AGENTS.md:1` and `../apps/api/prisma/seed.ts:1`.
+The third line is the one that matters most: a `create table public.` anywhere
+under `supabase/migrations/` means somebody has recreated the bug of 22 Aug.
 
-## Remote divergence
+## The hosted project
 
-Remote `wndilblmkkdyzpffmwap` (eu-west-1) was populated via `apps/api/scripts/sql.mjs:28` on `DIRECT_URL` (session pooler 5432), not `supabase db push`. `supabase_migrations` table is empty for DB; storage buckets were missing until this fix. After first `supabase link`, `migration repair` is only needed for storage migrations, not Prisma DB migrations (which use `prisma migrate deploy` over `DIRECT_URL`).
+Ref `wndilblmkkdyzpffmwap`, region `aws-1-eu-west-1`.
+
+It was populated over `DIRECT_URL` (the session pooler on 5432) with
+`prisma migrate deploy` and `apps/api/scripts/sql.mjs` — **not** with
+`supabase db push`. Its `supabase_migrations` table is therefore empty as far as
+the database schema is concerned. After a first `supabase link`,
+`migration repair` is needed only for the storage migration; the Prisma
+migrations are not and should not be tracked there.
+
+Auth on this project signs **ES256**, so `SUPABASE_JWT_SECRET` stays blank and
+the API verifies against
+`https://wndilblmkkdyzpffmwap.supabase.co/auth/v1/.well-known/jwks.json`. See
+[`apps/api/README.md`](../apps/api/README.md) § "HS256 vs JWKS".
+
+## Further reading
+
+- [`AGENTS.md`](../AGENTS.md) — the full ownership contract and migration procedure.
+- [`apps/api/README.md`](../apps/api/README.md) — migrations from the Prisma side.
+- [`apps/api/prisma/seed.ts`](../apps/api/prisma/seed.ts) — what `prisma db seed` runs.
+- [`docs/ERD.md`](../docs/ERD.md) — the data model and why it looks the way it does.
