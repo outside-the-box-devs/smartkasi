@@ -16,8 +16,11 @@ class PaymentIntentDto {
 export class PaymentsStubController {
   @Post('intent')
   @HttpCode(200)
-  intent(@Body() _dto: PaymentIntentDto) {
+  intent(@Body() dto: PaymentIntentDto) {
     return {
+      // Echoed back so a client can tie the refusal to the order it asked
+      // about. The id was already being validated and then discarded.
+      order_id: dto.order_id,
       status: 'not_implemented',
       checkout_url: null,
       message: 'v1 is cash only. Collect payment on handover.',

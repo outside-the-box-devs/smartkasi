@@ -14,6 +14,11 @@ import {
 } from './dto';
 import { QuoteService } from './quote.service';
 import {
+  deriveOrderStatus,
+  deriveSubtotalCents,
+  deriveTotalCents,
+} from './order-math';
+import {
   presentCustomerDelivery,
   sequencePickups,
   type CustomerDeliveryInput,
@@ -342,22 +347,14 @@ export class OrdersService {
       where: { orderId },
       select: { status: true, subtotalCents: true },
     });
-    if (legs.length === 0) return;
 
-    const statuses = legs.map((l) => l.status);
-    const live = statuses.filter((s) => s !== 'rejected' && s !== 'cancelled');
+    // The state machine and the totals are pure functions in order-math.ts,
+    // so every transition is asserted without a database. A null status means
+    // there are no legs, which is a race with a delete, not a state.
+    const status = deriveOrderStatus(legs);
+    if (status === null) return;
 
-    let status: OrderStatus;
-    if (live.length === 0) status = 'rejected';
-    else if (statuses.includes('pending')) status = 'placed';
-    else if (live.every((s) => s === 'ready' || s === 'collected'))
-      status = 'ready';
-    else if (live.length < statuses.length) status = 'partially_accepted';
-    else status = 'accepted';
-
-    const subtotal = legs
-      .filter((l) => l.status !== 'rejected')
-      .reduce((sum, l) => sum + l.subtotalCents, BigInt(0));
+    const subtotal = deriveSubtotalCents(legs);
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -369,10 +366,11 @@ export class OrdersService {
       data: {
         status,
         subtotalCents: subtotal,
-        totalCents:
-          subtotal +
-          (order?.serviceFeeCents ?? BigInt(0)) +
-          (order?.deliveryFeeCents ?? BigInt(0)),
+        totalCents: deriveTotalCents(
+          subtotal,
+          order?.serviceFeeCents ?? BigInt(0),
+          order?.deliveryFeeCents ?? BigInt(0),
+        ),
       },
     });
   }
