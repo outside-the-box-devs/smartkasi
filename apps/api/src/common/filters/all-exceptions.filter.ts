@@ -32,7 +32,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       `req_${randomUUID().slice(0, 12)}`;
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let code: string = ApiErrorCode.INTERNAL_ERROR;
+    // Typed as the enum, not `string`. Widening it made every `code === ...`
+    // below an unsafe comparison the linter could not check, which is how a
+    // typo in one of them would have gone unnoticed.
+    let code: ApiErrorCode = ApiErrorCode.INTERNAL_ERROR;
     let message = 'Something went wrong on our side.';
     let details: ApiErrorDetail[] = [];
     let payload: unknown;

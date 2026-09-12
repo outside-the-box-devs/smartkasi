@@ -7,6 +7,7 @@ import { ApiError, ApiErrorCode } from '../../common/errors/api-error';
 import { haversineM } from '../../common/geo';
 import type { AuthUser } from '../../common/types/auth.types';
 import { CollectJobDto, DeliverJobDto, RequestDeliveryDto } from './dto';
+import { payoutCents } from '../orders/fee-math';
 import {
   MODE_MAX_RADIUS_M,
   PICKUP_LEG_STATUSES,
@@ -350,9 +351,23 @@ export class DeliveryService {
 
   // ---- internals ----------------------------------------------------------
 
+  /**
+   * The courier's cut, fixed here and stored on the delivery so a later
+   * change to the percentage cannot reprice a job somebody already accepted.
+   *
+   * No `?? 80` fallback any more. 80% was the PREVIOUS share, superseded by
+   * docs/API_CONTRACT.md § 9.1, and a fallback to it would have quietly paid
+   * the old rate the moment the config key went missing. A missing fee
+   * constant is a misconfigured deployment, not a number to guess at.
+   */
   private payoutFor(serviceFeeCents: bigint): number {
-    const pct = this.config.get<number>('fees.courierSharePct') ?? 80;
-    return Math.round((Number(serviceFeeCents) * pct) / 100);
+    const pct = this.config.get<number>('fees.courierSharePct');
+    if (typeof pct !== 'number') {
+      throw new Error(
+        'fees.courierSharePct is not configured — refusing to guess a payout',
+      );
+    }
+    return payoutCents(Number(serviceFeeCents), pct);
   }
 
   private async requireCourier(userId: string): Promise<CourierWithProfile> {

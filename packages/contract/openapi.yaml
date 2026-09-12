@@ -2050,10 +2050,15 @@ paths:
               schema:
                 type: object
                 properties:
+                  order_id:
+                    type: string
+                    format: uuid
+                    description: Echoed back so a client can tie the refusal to the order it asked about.
                   status: { type: string, enum: [not_implemented] }
                   checkout_url: { type: string, nullable: true }
                   message: { type: string }
               example:
+                order_id: 9c3f1a20-1111-4a3b-9c11-dddddddddddd
                 status: not_implemented
                 checkout_url: null
                 message: v1 is cash only. Collect payment on handover.

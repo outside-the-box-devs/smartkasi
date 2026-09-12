@@ -26,7 +26,10 @@ export class ShopsController {
 
   @Public()
   @Get()
-  list(@CurrentUser() user: AuthUser | undefined, @Query() query: ListShopsQuery) {
+  list(
+    @CurrentUser() user: AuthUser | undefined,
+    @Query() query: ListShopsQuery,
+  ) {
     return this.service.list(query, user);
   }
 

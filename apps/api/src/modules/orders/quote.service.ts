@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma.service';
 import { ApiError, ApiErrorCode } from '../../common/errors/api-error';
 import { haversineM } from '../../common/geo';
 import { FulfilmentType, QuoteRequestDto } from './dto';
+import { serviceFee, type FeeConstants } from './fee-math';
 
 export interface StoredQuote {
   id: string;
@@ -88,7 +89,16 @@ export class QuoteService {
     );
     const maxDistance = Math.max(0, ...distanceByShop.values());
 
-    const maxSpread = this.config.get<number>('fees.maxBasketSpreadM') ?? 2000;
+    // No `?? 2000` fallback. 2000 m was the PREVIOUS cap, superseded by
+    // docs/API_CONTRACT.md § 9.2 because a foot courier covers the shop-to-shop
+    // spread PLUS the leg to the customer, and 2000 builds a route they cannot
+    // walk. Falling back to it would have quietly restored the bad cap.
+    const maxSpread = this.config.get<number>('fees.maxBasketSpreadM');
+    if (typeof maxSpread !== 'number') {
+      throw new Error(
+        'fees.maxBasketSpreadM is not configured — refusing to guess a basket cap',
+      );
+    }
     if (hasDropoff && maxDistance > maxSpread) {
       throw ApiError.unprocessable(
         ApiErrorCode.SHOPS_TOO_FAR_APART,
@@ -164,39 +174,15 @@ export class QuoteService {
       });
     }
 
-    const fees = this.config.get<{
-      baseCents: number;
-      perExtraShopCents: number;
-      perKmCents: number;
-    }>('fees')!;
-
-    const breakdown: Array<{ label: string; amount_cents: number }> = [];
-    let serviceFee = 0;
-
-    if (dto.fulfilment_type === FulfilmentType.delivery) {
-      serviceFee += fees.baseCents;
-      breakdown.push({
-        label: 'Base service fee',
-        amount_cents: fees.baseCents,
-      });
-
-      const extraShops = Math.max(0, shops.length - 1);
-      if (extraShops > 0) {
-        const amount = fees.perExtraShopCents * extraShops;
-        serviceFee += amount;
-        breakdown.push({
-          label: `Extra shop (${extraShops})`,
-          amount_cents: amount,
-        });
-      }
-
-      const km = Math.ceil(maxDistance / 1000);
-      if (km > 0) {
-        const amount = fees.perKmCents * km;
-        serviceFee += amount;
-        breakdown.push({ label: `Distance (${km} km)`, amount_cents: amount });
-      }
-    }
+    // The arithmetic lives in fee-math.ts so it can be tested against the
+    // worked examples in docs/API_CONTRACT.md § 9.1 without a database.
+    const fees = this.config.get<FeeConstants>('fees')!;
+    const { totalCents: serviceFeeCents, breakdown } = serviceFee({
+      isDelivery: dto.fulfilment_type === FulfilmentType.delivery,
+      shopCount: shops.length,
+      maxDistanceM: maxDistance,
+      fees,
+    });
 
     const stored: StoredQuote = {
       id: `qt_${randomUUID().replace(/-/g, '').slice(0, 16)}`,
@@ -206,9 +192,9 @@ export class QuoteService {
       dropoffLat: dto.dropoff_lat,
       dropoffLng: dto.dropoff_lng,
       subtotalCents: subtotal,
-      serviceFeeCents: serviceFee,
+      serviceFeeCents,
       deliveryFeeCents: 0,
-      totalCents: subtotal + serviceFee,
+      totalCents: subtotal + serviceFeeCents,
       shopCount: shops.length,
       maxDistanceM: maxDistance,
       legs,
