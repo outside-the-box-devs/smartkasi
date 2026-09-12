@@ -23,5 +23,9 @@ import { DeliveryService } from './delivery.service';
     CourierController,
   ],
   providers: [DeliveryService, CourierProfileService],
+  // Exported for AdminModule alone. Verification is an admin action, but the
+  // rules about what `is_verified` means belong with the rest of the courier
+  // record — see CourierProfileService.setVerified.
+  exports: [CourierProfileService],
 })
 export class DeliveryModule {}

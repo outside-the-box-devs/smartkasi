@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -133,4 +134,22 @@ export class DeliverJobDto {
   @IsInt()
   @Min(0)
   cash_collected_cents?: number;
+}
+
+/**
+ * The platform's verification decision on a courier application.
+ *
+ * One boolean rather than a status enum because `couriers.is_verified` IS a
+ * boolean: `pending` and `rejected` are the same stored value, so an endpoint
+ * offering both would be lying about what it wrote. Turning that column into an
+ * enum mirroring `licence_status` is tracked separately — see
+ * docs/API_CONTRACT.md § 8.
+ *
+ * `false` is therefore both "rejected" and "revoked". It is the revocation path
+ * for a courier who has to come off the board, and it is what an operator sends
+ * after reading an ID document that does not match.
+ */
+export class VerifyCourierDto {
+  @IsBoolean()
+  is_verified: boolean;
 }

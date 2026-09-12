@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsOptional,
@@ -68,6 +69,41 @@ export class SubmitLicenceDto {
   @IsString() @MaxLength(60) trading_licence_no: string;
   @IsUrl() licence_doc_url: string;
   @IsOptional() @IsDateString() licence_expires_at?: string;
+}
+
+/**
+ * The statuses a reviewer can move a licence TO.
+ *
+ * `none` and `pending` are missing on purpose: those are written by the shop's
+ * own actions (never submitted / just submitted), and letting an operator set
+ * them by hand would let a review be undone into a state that reads as though
+ * no review ever happened. A licence that should not have been verified is
+ * `rejected`.
+ *
+ * Kept in step with the licence_status enum in apps/api/prisma/schema.prisma.
+ */
+export const REVIEWED_LICENCE_STATUSES = [
+  'verified',
+  'rejected',
+  'expired',
+] as const;
+
+export type ReviewedLicenceStatus = (typeof REVIEWED_LICENCE_STATUSES)[number];
+
+export class SetLicenceStatusDto {
+  @IsIn(REVIEWED_LICENCE_STATUSES, {
+    message: `licence_status must be one of: ${REVIEWED_LICENCE_STATUSES.join(', ')}`,
+  })
+  licence_status: ReviewedLicenceStatus;
+
+  /**
+   * Optional, and only written when present. A reviewer reading the document
+   * usually has the expiry date in front of them and the owner may have got it
+   * wrong on submission; omitting it leaves whatever was submitted.
+   */
+  @IsOptional()
+  @IsDateString()
+  licence_expires_at?: string;
 }
 
 export { GeoQuery };

@@ -1,7 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../prisma.service';
-import { ApiError, ApiErrorCode } from '../../common/errors/api-error';
+import {
+  ApiError,
+  ApiErrorCode,
+  type ApiErrorDetail,
+} from '../../common/errors/api-error';
 import type { AuthUser } from '../../common/types/auth.types';
 import { MODE_MAX_RADIUS_M } from './delivery.presenter';
 import { ApplyCourierDto, UpdateCourierDto } from './dto';
@@ -62,8 +66,9 @@ export class CourierProfileService {
    * whose first ID photo was unreadable has to be able to send another one,
    * and there is nothing to gain from making that a different endpoint.
    *
-   * Never sets `is_verified`. Verification is a platform action behind the
-   * `admin` role — see docs/API_CONTRACT.md § 8 and the operator console.
+   * Never sets `is_verified`. That is a platform decision, made through
+   * `PATCH /admin/couriers/{courierId}/verify` — see `setVerified` below and
+   * docs/API_CONTRACT.md § 9.3.
    */
   async apply(user: AuthUser, dto: ApplyCourierDto) {
     const mode = dto.mode as CourierMode;
@@ -200,6 +205,47 @@ export class CourierProfileService {
     return this.present(row);
   }
 
+  /**
+   * The platform's verification decision. Reachable only through
+   * `PATCH /admin/couriers/{courierId}/verify`, whose `@Roles('admin')` is the
+   * whole gate — nothing here re-checks the caller.
+   *
+   * It lives in this file rather than in AdminService because this file owns
+   * what `is_verified` means: `VERIFICATION_BEARING` decides when a review is
+   * invalidated and `present` decides what a client is told about it. A second
+   * place writing the column is how those two drift apart.
+   *
+   * Revoking deliberately leaves two things alone:
+   *
+   *   - `is_online`, which is the courier's own statement of availability. A
+   *     courier re-verified next week should not have to work out that they
+   *     were silently switched off in the meantime.
+   *   - any delivery already in their hands. `requireCourier` gates the job
+   *     board and `accept`; `collect` and `deliver` do not call it, so a
+   *     parcel that has been picked up still reaches the customer. Revoking
+   *     stops the next job, not the current one — stranding a paid-for basket
+   *     in someone's bag is not a moderation action.
+   */
+  async setVerified(courierId: string, isVerified: boolean) {
+    const current = await this.prisma.courier.findUnique({
+      where: { id: courierId },
+    });
+    // Not the self-service 404 in `require` below: an admin acting on someone
+    // else's id has no application of their own to be pointed at.
+    if (!current) throw ApiError.notFound('Courier');
+
+    // Approving asserts that a human read the documents. With nothing to read
+    // the assertion is false, and expensively so — `verification_status` then
+    // reads `verified` to every client downstream.
+    if (isVerified) assertReviewable(current);
+
+    const row = await this.prisma.courier.update({
+      where: { id: courierId },
+      data: { isVerified },
+    });
+    return this.present(row);
+  }
+
   private async require(userId: string): Promise<Courier> {
     const row = await this.prisma.courier.findUnique({ where: { id: userId } });
     if (!row) {
@@ -315,4 +361,32 @@ function changedVerificationFields(
     id_doc_url: next.idDocUrl,
   };
   return VERIFICATION_BEARING.filter((f) => before[f] !== after[f]);
+}
+
+/**
+ * What a reviewer must actually have in front of them before `is_verified` can
+ * be true.
+ *
+ * `ApplyCourierDto` already requires `id_doc_url`, so this fires on rows that
+ * predate that rule — db/seed.sql's hand-inserted courier among them — and on a
+ * vehicle courier whose registration a mode switch has since cleared.
+ */
+function assertReviewable(c: Courier): void {
+  const missing: ApiErrorDetail[] = [];
+  if (!c.idDocUrl) {
+    missing.push({ field: 'id_doc_url', issue: 'no ID document to review' });
+  }
+  if (c.mode === 'vehicle' && !c.vehicleReg) {
+    missing.push({
+      field: 'vehicle_reg',
+      issue: 'required when mode is vehicle',
+    });
+  }
+  if (missing.length === 0) return;
+
+  throw ApiError.unprocessable(
+    ApiErrorCode.VALIDATION_FAILED,
+    'This application is missing what a reviewer has to look at',
+    missing,
+  );
 }

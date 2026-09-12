@@ -297,6 +297,193 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/couriers:
+    get:
+      tags: [Admin]
+      summary: "[LIVE] The courier verification queue"
+      description: |
+        Applications awaiting a decision. There is no other listing of couriers
+        anywhere in the API, and `PATCH /admin/couriers/{courierId}/verify` takes
+        a uuid — this is where that uuid comes from.
+
+        Carries `id_doc_url`, because reviewing an application is looking at that
+        document. Never render it anywhere but the operator console.
+      operationId: listCourierQueue
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, verified, all]
+            default: pending
+          description: |
+            `pending` is `is_verified = false` — and so is a rejected
+            application, because the column is a boolean. A declined applicant
+            therefore reappears in this queue. See § 8.
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of courier applications, oldest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/CourierQueueEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/couriers/{courierId}/verify:
+    patch:
+      tags: [Admin]
+      summary: "[LIVE] Approve, reject or revoke a courier"
+      description: |
+        The other half of `POST /courier/application`. Until this existed nothing
+        in the system could write `couriers.is_verified`, so every applicant sat
+        at `pending` permanently and only the seeded courier could take work.
+
+        One boolean rather than a status enum, because the column is a boolean:
+        `pending` and `rejected` are the same stored value, and an endpoint
+        offering both would be describing a state it cannot save. The enum is
+        tracked in § 8.
+
+        **`false` is also the revocation path.** It stops the courier being
+        offered new work and closes the job board to them, but it does not abort
+        a delivery already in their hands — `collect` and `deliver` stay open, so
+        a basket that has been picked up still reaches the customer. It does not
+        touch `is_online` either.
+
+        Approving requires something to have been reviewed: `422` if the record
+        has no `id_doc_url`, or is `vehicle` with no `vehicle_reg`.
+      operationId: verifyCourier
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: courierId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_verified]
+              properties:
+                is_verified: { type: boolean }
+      responses:
+        "200":
+          description: The courier record, as that courier now sees it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`VALIDATION_FAILED` — nothing to review. `details` names the missing field."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /admin/shops:
+    get:
+      tags: [Admin]
+      summary: "[LIVE] The trading-licence queue"
+      description: |
+        Shops by `licence_status`. Deliberately not a filter on `GET /shops`:
+        that is the public township directory, and which shops are awaiting or
+        have failed review is not an answer to give whoever asks.
+
+        Unlike `GET /shops` this ignores `is_active` — a shop that switched
+        itself off while waiting still needs a decision.
+      operationId: listLicenceQueue
+      x-smartkasi-status: LIVE
+      parameters:
+        - name: licence_status
+          in: query
+          schema:
+            type: string
+            enum: [none, pending, verified, rejected, expired, all]
+            default: pending
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PerPage" }
+      responses:
+        "200":
+          description: A page of shops, oldest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/LicenceQueueEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/shops/{shopId}/licence:
+    parameters:
+      - { $ref: "#/components/parameters/ShopId" }
+    patch:
+      tags: [Admin]
+      summary: "[LIVE] Decide a submitted trading licence"
+      description: |
+        The other half of `POST /shops/{shopId}/licence`, which until now
+        accepted a submission nothing could act on. § 9.3: a shop owner submits,
+        a human at SmartKasi decides, never self-service.
+
+        **Anything other than `verified` forces `accepts_orders` to false.**
+        `PATCH /shops/{shopId}` refuses to switch that flag on without a verified
+        licence, but it only guarded the transition — a shop already switched on
+        kept taking orders straight through a revocation.
+
+        `none` and `pending` are not settable: those describe what the shop did,
+        not what a reviewer decided. A licence that should not have been verified
+        is `rejected`.
+
+        `422` if the shop never submitted a licence, or if the expiry date being
+        verified is already in the past.
+      operationId: setLicenceStatus
+      x-smartkasi-status: LIVE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [licence_status]
+              properties:
+                licence_status:
+                  type: string
+                  enum: [verified, rejected, expired]
+                licence_expires_at:
+                  type: string
+                  format: date
+                  description: "Only written when sent. Omit to keep what the owner submitted."
+      responses:
+        "200":
+          description: The updated shop.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shop" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`VALIDATION_FAILED` — nothing submitted to verify, or the licence has already expired."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   # ===========================================================================
   # SHOPS
   # ===========================================================================
@@ -1672,9 +1859,9 @@ paths:
         send the returned `public_url` here.
 
         **Does not make you verified.** The account is created `pending` and
-        `is_online: false`; verification is a platform action behind the `admin`
-        role, never self-service. Until it happens `GET /courier/jobs` answers
-        `422 COURIER_NOT_AVAILABLE`.
+        `is_online: false`; an operator decides through
+        `PATCH /admin/couriers/{courierId}/verify`, never self-service. Until
+        that happens `GET /courier/jobs` answers `422 COURIER_NOT_AVAILABLE`.
 
         **Idempotent by user.** Re-posting replaces the application rather than
         returning a `409` — a first ID photo that came out unreadable has to be
@@ -2847,6 +3034,45 @@ components:
         max_radius_m: { type: integer, minimum: 250, maximum: 50000 }
         vehicle_reg: { type: string, maxLength: 20 }
         id_doc_url: { type: string, format: uri }
+
+    CourierQueueEntry:
+      type: object
+      description: |
+        One row of the operator console's review queue. Admin only — it carries
+        `id_doc_url` and the applicant's phone number.
+      properties:
+        id: { type: string, format: uuid }
+        full_name: { type: string }
+        phone: { type: string, nullable: true }
+        mode: { $ref: "#/components/schemas/CourierMode" }
+        max_radius_m: { type: integer }
+        vehicle_reg: { type: string, nullable: true }
+        id_doc_url: { type: string, format: uri, nullable: true }
+        verification_status: { type: string, enum: [pending, verified] }
+        is_verified: { type: boolean }
+        is_online: { type: boolean }
+        applied_at: { type: string, format: date-time }
+
+    LicenceQueueEntry:
+      type: object
+      description: |
+        One row of the trading-licence queue. Admin only — it carries
+        `licence_doc_url`.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        owner_id: { type: string, format: uuid }
+        township: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        trading_licence_no: { type: string, nullable: true }
+        licence_status: { $ref: "#/components/schemas/LicenceStatus" }
+        licence_doc_url: { type: string, format: uri, nullable: true }
+        licence_expires_at: { type: string, format: date, nullable: true }
+        mode: { $ref: "#/components/schemas/ShopMode" }
+        accepts_orders: { type: boolean }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
 
     CourierProfile:
       type: object
