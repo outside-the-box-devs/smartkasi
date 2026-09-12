@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 
 info:
   title: SmartKasi API
@@ -287,7 +287,7 @@ paths:
                   role: { type: string, enum: [customer, shop_owner, shop_staff, courier, admin] }
                   previous_role: { type: string, enum: [customer, shop_owner, shop_staff, courier, admin] }
                   full_name: { type: string }
-                  phone: { type: string, nullable: true }
+                  phone: { type: [string, "null"] }
                   takes_effect:
                     type: string
                     example: "on the next token this user is issued"
@@ -371,6 +371,7 @@ paths:
                     accepts_delivery: false
                     is_open_now: true
                 meta: { page: 1, per_page: 25, total: 2, total_pages: 1 }
+        "400": { $ref: "#/components/responses/BadRequest" }
     post:
       tags: [Shops]
       summary: "[LIVE] Register a shop"
@@ -504,6 +505,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
     post:
       tags: [Catalog]
       summary: "[LIVE] Create a product"
@@ -700,6 +702,7 @@ paths:
                         stock_qty: 40
                         accepts_orders: true
                 meta: { page: 1, per_page: 25, total: 1, total_pages: 1 }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   # ===========================================================================
   # INVENTORY
@@ -861,8 +864,12 @@ paths:
                       properties:
                         product_id: { type: string, format: uuid }
                         status: { type: string, enum: [created, updated, skipped_stale, failed] }
-                        shop_product_id: { type: string, format: uuid, nullable: true }
+                        shop_product_id: { type: [string, "null"], format: uuid }
                         error: { $ref: "#/components/schemas/ErrorDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /shops/{shopId}/inventory/low-stock:
     parameters:
@@ -889,6 +896,10 @@ paths:
                     properties:
                       total: { type: integer }
                       out_of_stock: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
   # SYNC
@@ -936,6 +947,10 @@ paths:
                   deleted_shop_product_ids:
                     type: array
                     items: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
   # SALES / POS
@@ -973,6 +988,10 @@ paths:
                       data:
                         type: array
                         items: { $ref: "#/components/schemas/Sale" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Sales]
       summary: "[LIVE] Record a single sale (online till)"
@@ -1067,6 +1086,10 @@ paths:
                     error:
                       code: TOTALS_MISMATCH
                       message: "total_cents 3400 does not equal subtotal 3450 minus discount 0"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /shops/{shopId}/sales/{saleId}:
     parameters:
@@ -1177,6 +1200,10 @@ paths:
                   - { method: card, count: 6, total_cents: 23450 }
                 top_products:
                   - { product_id: 3f0a9d10-aaaa-4c11-9999-111111111111, name: Iwisa Super Maize Meal, qty: 12, total_cents: 102000 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
   # ORDERS
@@ -1274,6 +1301,8 @@ paths:
                       data:
                         type: array
                         items: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Orders]
       summary: "[LIVE] Place an order"
@@ -1378,6 +1407,10 @@ paths:
                       data:
                         type: array
                         items: { $ref: "#/components/schemas/ShopOrderLeg" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /orders/{orderId}/legs/{shopId}/accept:
     parameters:
@@ -1442,6 +1475,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ShopOrderLeg" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /orders/{orderId}/legs/{shopId}/ready:
     parameters:
@@ -1459,6 +1496,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ShopOrderLeg" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
   # FLYERS
@@ -1487,6 +1528,8 @@ paths:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/Flyer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Flyers]
       summary: "[LIVE] Upload a flyer"
@@ -1514,6 +1557,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Flyer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /shops/{shopId}/flyers/{flyerId}:
     parameters:
@@ -1577,6 +1624,8 @@ paths:
                 method: PUT
                 headers: { Content-Type: image/jpeg }
                 expires_at: "2026-08-22T09:24:00Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ===========================================================================
   # DELIVERY  — STUB
@@ -1623,6 +1672,10 @@ paths:
                 eta_band: null
                 courier: null
                 updated_at: "2026-08-22T09:20:00Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /deliveries/{deliveryId}:
     parameters:
@@ -1661,6 +1714,10 @@ paths:
                 eta_band: 10-20min
                 courier: { display_name: "Thabo M.", mode: bicycle, rating_avg: 4.8 }
                 updated_at: "2026-08-22T09:41:00Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /courier/application:
     post:
@@ -1858,6 +1915,8 @@ paths:
                     payout_cents: 900
                     mode: foot
                     expires_at: "2026-08-22T09:26:00Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /courier/jobs/{deliveryId}/accept:
     parameters:
@@ -1920,6 +1979,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierDelivery" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /courier/jobs/{deliveryId}/deliver:
     parameters:
@@ -1955,6 +2018,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierDelivery" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
   # AI  — STUB
@@ -2018,6 +2085,8 @@ paths:
                       shop_name: Bra Sipho Spaza
                       distance_m: 620
                       price_cents: 2199
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ===========================================================================
   # PAYMENTS — STUB
@@ -2055,13 +2124,15 @@ paths:
                     format: uuid
                     description: Echoed back so a client can tie the refusal to the order it asked about.
                   status: { type: string, enum: [not_implemented] }
-                  checkout_url: { type: string, nullable: true }
+                  checkout_url: { type: [string, "null"] }
                   message: { type: string }
               example:
                 order_id: 9c3f1a20-1111-4a3b-9c11-dddddddddddd
                 status: not_implemented
                 checkout_url: null
                 message: v1 is cash only. Collect payment on handover.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
 components:
   securitySchemes:
@@ -2233,11 +2304,11 @@ components:
         id: { type: string, format: uuid }
         role: { $ref: "#/components/schemas/UserRole" }
         full_name: { type: string }
-        phone: { type: string, nullable: true }
-        avatar_url: { type: string, nullable: true }
-        home_address: { type: string, nullable: true }
-        home_lat: { type: number, format: double, nullable: true }
-        home_lng: { type: number, format: double, nullable: true }
+        phone: { type: [string, "null"] }
+        avatar_url: { type: [string, "null"] }
+        home_address: { type: [string, "null"] }
+        home_lat: { type: [number, "null"], format: double }
+        home_lng: { type: [number, "null"], format: double }
         shop_ids:
           type: array
           description: Shops this user owns or works at. Empty for customers.
@@ -2263,15 +2334,14 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         slug: { type: string }
-        logo_url: { type: string, nullable: true }
+        logo_url: { type: [string, "null"] }
         address_line: { type: string }
-        township: { type: string, nullable: true }
-        city: { type: string, nullable: true }
+        township: { type: [string, "null"] }
+        city: { type: [string, "null"] }
         lat: { type: number, format: double }
         lng: { type: number, format: double }
         distance_m:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Present only when the request supplied `lat`/`lng`.
         mode: { $ref: "#/components/schemas/ShopMode" }
         accepts_orders: { type: boolean }
@@ -2284,14 +2354,14 @@ components:
         - type: object
           properties:
             owner_id: { type: string, format: uuid }
-            description: { type: string, nullable: true }
-            phone: { type: string, nullable: true }
-            province: { type: string, nullable: true }
-            trading_licence_no: { type: string, nullable: true }
+            description: { type: [string, "null"] }
+            phone: { type: [string, "null"] }
+            province: { type: [string, "null"] }
+            trading_licence_no: { type: [string, "null"] }
             licence_status: { $ref: "#/components/schemas/LicenceStatus" }
-            licence_expires_at: { type: string, format: date, nullable: true }
-            opens_at: { type: string, nullable: true, example: "07:00" }
-            closes_at: { type: string, nullable: true, example: "20:00" }
+            licence_expires_at: { type: [string, "null"], format: date }
+            opens_at: { type: [string, "null"],  example: "07:00" }
+            closes_at: { type: [string, "null"],  example: "20:00" }
             is_active: { type: boolean }
             product_count: { type: integer }
             created_at: { type: string, format: date-time }
@@ -2345,15 +2415,14 @@ components:
       properties:
         id: { type: string, format: uuid }
         barcode:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Null means a shop-local item, excluded from price comparison.
         name: { type: string }
-        brand: { type: string, nullable: true }
-        unit_size: { type: string, nullable: true }
-        image_url: { type: string, nullable: true }
+        brand: { type: [string, "null"] }
+        unit_size: { type: [string, "null"] }
+        image_url: { type: [string, "null"] }
         category: { $ref: "#/components/schemas/Category" }
-        created_by_shop_id: { type: string, format: uuid, nullable: true }
+        created_by_shop_id: { type: [string, "null"], format: uuid }
         is_verified: { type: boolean }
         updated_at: { type: string, format: date-time }
 
@@ -2394,7 +2463,7 @@ components:
       properties:
         shop_id: { type: string, format: uuid }
         shop_name: { type: string }
-        distance_m: { type: integer, nullable: true }
+        distance_m: { type: [integer, "null"] }
         price_cents: { type: integer, format: int64 }
         stock_qty: { type: integer }
         accepts_orders: { type: boolean }
@@ -2414,11 +2483,10 @@ components:
       properties:
         product: { $ref: "#/components/schemas/Product" }
         shop_product:
-          type: object
-          nullable: true
           description: Present only when `shop_id` was supplied and the shop stocks it.
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/InventoryItemCore"
+            - type: "null"
 
     # ---- Inventory --------------------------------------------------------
     InventoryItemCore:
@@ -2438,12 +2506,11 @@ components:
             shop_id: { type: string, format: uuid }
             product: { $ref: "#/components/schemas/Product" }
             cost_cents:
-              type: integer
+              type: [integer, "null"]
               format: int64
-              nullable: true
               description: Shop staff only. Omitted from any customer-facing response.
             is_low_stock: { type: boolean }
-            client_updated_at: { type: string, format: date-time, nullable: true }
+            client_updated_at: { type: [string, "null"], format: date-time }
             updated_at: { type: string, format: date-time }
 
     # ---- Sales ------------------------------------------------------------
@@ -2504,14 +2571,14 @@ components:
         id: { type: string, format: uuid }
         shop_id: { type: string, format: uuid }
         client_sale_id: { type: string, format: uuid }
-        cashier_id: { type: string, format: uuid, nullable: true }
-        cashier_name: { type: string, nullable: true }
+        cashier_id: { type: [string, "null"], format: uuid }
+        cashier_name: { type: [string, "null"] }
         status: { type: string, enum: [completed, voided] }
         subtotal_cents: { type: integer, format: int64 }
         discount_cents: { type: integer, format: int64 }
         total_cents: { type: integer, format: int64 }
-        amount_tendered_cents: { type: integer, format: int64, nullable: true }
-        change_cents: { type: integer, format: int64, nullable: true }
+        amount_tendered_cents: { type: [integer, "null"], format: int64 }
+        change_cents: { type: [integer, "null"], format: int64 }
         payment_method: { $ref: "#/components/schemas/PaymentMethod" }
         items:
           type: array
@@ -2569,7 +2636,7 @@ components:
                 type: string
                 enum: [created, duplicate, failed]
                 description: "`duplicate` is a SUCCESS. Clear it from the device queue."
-              sale_id: { type: string, format: uuid, nullable: true }
+              sale_id: { type: [string, "null"], format: uuid }
               error: { $ref: "#/components/schemas/ErrorDetail" }
 
     # ---- Orders -----------------------------------------------------------
@@ -2652,7 +2719,7 @@ components:
         product_id: { type: string, format: uuid }
         product_name: { type: string }
         qty: { type: integer }
-        fulfilled_qty: { type: integer, nullable: true }
+        fulfilled_qty: { type: [integer, "null"] }
         unit_price_cents: { type: integer, format: int64 }
         line_total_cents: { type: integer, format: int64 }
 
@@ -2662,11 +2729,11 @@ components:
         id: { type: string, format: uuid }
         shop_id: { type: string, format: uuid }
         shop_name: { type: string }
-        shop_phone: { type: string, nullable: true }
+        shop_phone: { type: [string, "null"] }
         status: { $ref: "#/components/schemas/OrderShopStatus" }
-        distance_m: { type: integer, nullable: true }
+        distance_m: { type: [integer, "null"] }
         subtotal_cents: { type: integer, format: int64 }
-        rejected_reason: { type: string, nullable: true }
+        rejected_reason: { type: [string, "null"] }
         items:
           type: array
           items: { $ref: "#/components/schemas/OrderItem" }
@@ -2680,8 +2747,8 @@ components:
         customer_id: { type: string, format: uuid }
         status: { $ref: "#/components/schemas/OrderStatus" }
         fulfilment_type: { $ref: "#/components/schemas/FulfilmentType" }
-        dropoff_address: { type: string, nullable: true }
-        dropoff_notes: { type: string, nullable: true }
+        dropoff_address: { type: [string, "null"] }
+        dropoff_notes: { type: [string, "null"] }
         subtotal_cents: { type: integer, format: int64 }
         service_fee_cents: { type: integer, format: int64 }
         delivery_fee_cents: { type: integer, format: int64 }
@@ -2690,11 +2757,13 @@ components:
           type: array
           items: { $ref: "#/components/schemas/OrderLeg" }
         delivery:
-          type: object
-          nullable: true
-          allOf: [{ $ref: "#/components/schemas/CustomerDelivery" }]
+          # Null is the normal case: a collection order never has a delivery,
+          # and a delivery order has none until one is requested.
+          oneOf:
+            - $ref: "#/components/schemas/CustomerDelivery"
+            - type: "null"
         placed_at: { type: string, format: date-time }
-        completed_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: [string, "null"], format: date-time }
       example:
         id: 88888888-8888-4888-8888-888888888888
         order_number: SK-8F3K2P
@@ -2767,22 +2836,23 @@ components:
         order_id: { type: string, format: uuid }
         status: { $ref: "#/components/schemas/DeliveryStatus" }
         mode:
-          type: string
-          nullable: true
-          enum: [foot, bicycle, vehicle]
+          # `null` appears in both the type union and the enum, and needs to:
+          # an enum is a closed list of allowed values, so widening the type
+          # alone does not permit it. Genuinely null until a courier accepts
+          # and their own mode overwrites the requested one.
+          type: [string, "null"]
+          enum: [foot, bicycle, vehicle, null]
         eta_band:
-          type: string
-          nullable: true
+          type: [string, "null"]
           enum: ["under-10min", "10-20min", "20-40min", "over-40min", null]
           description: Deliberately coarse. A precise ETA is a precise location.
         courier:
-          type: object
-          nullable: true
+          type: [object, "null"]
           description: Populated only from `collected` onward, and only ever first name plus initial.
           properties:
             display_name: { type: string, example: "Thabo M." }
             mode: { $ref: "#/components/schemas/CourierMode" }
-            rating_avg: { type: number, format: float, nullable: true }
+            rating_avg: { type: [number, "null"], format: float }
         updated_at: { type: string, format: date-time }
 
     CourierDelivery:
@@ -2807,18 +2877,18 @@ components:
               address_line: { type: string }
               lat: { type: number, format: double }
               lng: { type: number, format: double }
-              phone: { type: string, nullable: true }
+              phone: { type: [string, "null"] }
               collected: { type: boolean }
               item_count: { type: integer }
         dropoff:
           type: object
           properties:
             address_line: { type: string }
-            notes: { type: string, nullable: true }
+            notes: { type: [string, "null"] }
             lat: { type: number, format: double }
             lng: { type: number, format: double }
             customer_first_name: { type: string }
-            customer_phone: { type: string, nullable: true }
+            customer_phone: { type: [string, "null"] }
         updated_at: { type: string, format: date-time }
 
     CourierApplication:
@@ -2867,8 +2937,8 @@ components:
         effective_radius_m:
           type: integer
           description: "`max_radius_m` after the per-mode cap. What job matching actually uses."
-        vehicle_reg: { type: string, nullable: true }
-        id_doc_url: { type: string, format: uri, nullable: true }
+        vehicle_reg: { type: [string, "null"] }
+        id_doc_url: { type: [string, "null"], format: uri }
         verification_status:
           type: string
           enum: [pending, verified]
@@ -2882,16 +2952,14 @@ components:
           type: boolean
           description: "`is_verified && is_online`. Render this rather than recomputing it."
         blocked_reason:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: "Why not, in words for the courier. Null when `can_receive_jobs` is true."
-        rating_avg: { type: number, nullable: true }
+        rating_avg: { type: [number, "null"] }
         verification_reset:
           type: boolean
           description: "True when this write dropped a verified account back to pending."
         verification_reset_by:
-          type: array
-          nullable: true
+          type: [array, "null"]
           items: { type: string }
           description: "Which reviewed fields caused it."
         role_takes_effect:
@@ -2955,10 +3023,10 @@ components:
               name: { type: string }
               quantity: { type: string }
               matched_product:
-                type: object
-                nullable: true
-                allOf: [{ $ref: "#/components/schemas/Product" }]
+                oneOf:
+                  - $ref: "#/components/schemas/Product"
+                  - type: "null"
               best_offer:
-                type: object
-                nullable: true
-                allOf: [{ $ref: "#/components/schemas/ProductOffer" }]
+                oneOf:
+                  - $ref: "#/components/schemas/ProductOffer"
+                  - type: "null"
