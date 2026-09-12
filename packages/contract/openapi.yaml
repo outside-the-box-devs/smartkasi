@@ -3118,11 +3118,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         full_name: { type: string }
-        phone: { type: string, nullable: true }
+        phone: { type: [string, "null"] }
         mode: { $ref: "#/components/schemas/CourierMode" }
         max_radius_m: { type: integer }
-        vehicle_reg: { type: string, nullable: true }
-        id_doc_url: { type: string, format: uri, nullable: true }
+        vehicle_reg: { type: [string, "null"] }
+        id_doc_url: { type: [string, "null"], format: uri }
         verification_status: { type: string, enum: [pending, verified] }
         is_verified: { type: boolean }
         is_online: { type: boolean }
@@ -3138,12 +3138,12 @@ components:
         name: { type: string }
         slug: { type: string }
         owner_id: { type: string, format: uuid }
-        township: { type: string, nullable: true }
-        city: { type: string, nullable: true }
-        trading_licence_no: { type: string, nullable: true }
+        township: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        trading_licence_no: { type: [string, "null"] }
         licence_status: { $ref: "#/components/schemas/LicenceStatus" }
-        licence_doc_url: { type: string, format: uri, nullable: true }
-        licence_expires_at: { type: string, format: date, nullable: true }
+        licence_doc_url: { type: [string, "null"], format: uri }
+        licence_expires_at: { type: [string, "null"], format: date }
         mode: { $ref: "#/components/schemas/ShopMode" }
         accepts_orders: { type: boolean }
         is_active: { type: boolean }
