@@ -340,7 +340,7 @@ Listed so nobody spends tomorrow looking for them.
 | Multi-language | English only | v2 |
 | Refunds | Voids only, at the till | v2 |
 | Rejecting a courier **distinguishably** | `PATCH /admin/couriers/{id}/verify` is LIVE, but `couriers.is_verified` is a boolean, so `pending` and `rejected` are one stored value. A declined applicant reappears in `GET /admin/couriers?status=pending` and cannot be told why. An enum mirroring `licence_status` is the fix | next |
-| A rejection **reason** | Both decisions are a status and nothing else — there is no column to put words in, on `shops` or on `couriers`. An operator rejects; the applicant sees only that they are not verified | with the enum above |
+| A rejection **reason**, for couriers | `couriers.is_verified` is a boolean and nothing else — there is no column to put words in. A rejected applicant sees only that they are not verified | with the enum above |
 | The operator **console** | The API half of verification is LIVE. The UI a human actually works the queue from is not | #27 |
 | One user holding two roles | A shop owner who applies to courier gets the record but keeps `shop_owner`, so the role-gated job board stays shut to them | v2 |
 
@@ -410,7 +410,11 @@ all three:
 - **Anything other than `verified` forces `accepts_orders` to false.**
   `PATCH /shops/{shopId}` guards the transition ON; it never guarded a shop that
   was already open, so a revocation used to leave orders flowing.
-- **There is no reason field.** See § 8.
+- **A rejection carries a reason.** `licence_status: 'rejected'` requires
+  `rejection_reason` (max 500 chars); the shop owner app reads it verbatim off
+  `GET /shops/{id}`. It is cleared on any other decision and on resubmission,
+  so it never outlives the rejection it explains. Couriers do not have this yet
+  — see § 8.
 
 The role half is unchanged: `PATCH /admin/users/{id}/role` is still the only way
 to move somebody between apps, and is admin-guarded for the same reason.

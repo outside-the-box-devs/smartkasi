@@ -65,7 +65,14 @@ export default function LicensePanel({ shop }: { shop: ShopDetail }) {
             <Banner status="warning" title="Under review" description="We're checking your documents. You'll be able to take orders once it's approved." />
           )}
           {shop.licence_status === 'rejected' && (
-            <Banner status="error" title="Your licence was rejected" description="Check the licence number and document, then submit again." />
+            <Banner
+              status="error"
+              title="Your licence was rejected"
+              description={
+                shop.licence_rejection_reason ??
+                'Check the licence number and document, then submit again.'
+              }
+            />
           )}
           {shop.licence_status === 'expired' && (
             <Banner status="warning" title="Your licence has expired" description="Submit a current licence to keep taking orders." />

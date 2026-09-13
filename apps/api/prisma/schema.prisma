@@ -16,9 +16,9 @@
 // read a `geography` column at all. See docs/ERD.md for the tradeoff.
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
   // Prisma 7 emits `.ts` extensions in its relative imports by default, which
   // tsc leaves verbatim under moduleResolution "nodenext" — the built app then
   // dies at require('./internal/class.ts'). Extensionless keeps CJS resolution
@@ -198,10 +198,11 @@ model Shop {
   city        String?
   province    String?
 
-  tradingLicenceNo String?       @map("trading_licence_no")
-  licenceStatus    LicenceStatus @default(none) @map("licence_status")
-  licenceDocUrl    String?       @map("licence_doc_url")
-  licenceExpiresAt DateTime?     @map("licence_expires_at") @db.Date
+  tradingLicenceNo       String?       @map("trading_licence_no")
+  licenceStatus          LicenceStatus @default(none) @map("licence_status")
+  licenceDocUrl          String?       @map("licence_doc_url")
+  licenceExpiresAt       DateTime?     @map("licence_expires_at") @db.Date
+  licenceRejectionReason String?       @map("licence_rejection_reason")
 
   mode            ShopMode  @default(advertising_only)
   acceptsOrders   Boolean   @default(false) @map("accepts_orders")
@@ -213,14 +214,14 @@ model Shop {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
-  owner            Profile         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  staff            ShopStaff[]
-  shopProducts     ShopProduct[]
-  createdProducts  Product[]
-  stockMovements   StockMovement[]
-  sales            Sale[]
-  orderShops       OrderShop[]
-  flyers           Flyer[]
+  owner           Profile         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  staff           ShopStaff[]
+  shopProducts    ShopProduct[]
+  createdProducts Product[]
+  stockMovements  StockMovement[]
+  sales           Sale[]
+  orderShops      OrderShop[]
+  flyers          Flyer[]
 
   @@index([lat, lng])
   @@index([ownerId])
@@ -291,16 +292,16 @@ model Product {
 // ============================================================================
 
 model ShopProduct {
-  id                String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  shopId            String @map("shop_id") @db.Uuid
-  productId         String @map("product_id") @db.Uuid
+  id        String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shopId    String @map("shop_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
 
-  priceCents        BigInt @map("price_cents")
+  priceCents        BigInt  @map("price_cents")
   /// Never exposed on a customer-facing response.
   costCents         BigInt? @map("cost_cents")
   /// Cached projection of stock_movements, maintained by a DB trigger.
-  stockQty          Int    @default(0) @map("stock_qty")
-  lowStockThreshold Int    @default(5) @map("low_stock_threshold")
+  stockQty          Int     @default(0) @map("stock_qty")
+  lowStockThreshold Int     @default(5) @map("low_stock_threshold")
   isAvailable       Boolean @default(true) @map("is_available")
 
   /// Last-write-wins key for offline inventory edits.
@@ -348,10 +349,10 @@ model StockMovement {
 // ============================================================================
 
 model Sale {
-  id           String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  shopId       String @map("shop_id") @db.Uuid
+  id           String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shopId       String  @map("shop_id") @db.Uuid
   /// Device-generated. THE idempotency key.
-  clientSaleId String @map("client_sale_id") @db.Uuid
+  clientSaleId String  @map("client_sale_id") @db.Uuid
   cashierId    String? @map("cashier_id") @db.Uuid
 
   subtotalCents       BigInt        @map("subtotal_cents")
@@ -376,9 +377,9 @@ model Sale {
 }
 
 model SaleItem {
-  id        String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  saleId    String @map("sale_id") @db.Uuid
-  productId String @map("product_id") @db.Uuid
+  id             String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  saleId         String @map("sale_id") @db.Uuid
+  productId      String @map("product_id") @db.Uuid
   /// Snapshot at time of sale — a later catalog rename must not change an old receipt.
   productName    String @map("product_name")
   qty            Int
@@ -397,10 +398,10 @@ model SaleItem {
 // ============================================================================
 
 model Order {
-  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  orderNumber String      @unique @map("order_number")
-  customerId  String      @map("customer_id") @db.Uuid
-  status      OrderStatus @default(placed)
+  id             String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  orderNumber    String         @unique @map("order_number")
+  customerId     String         @map("customer_id") @db.Uuid
+  status         OrderStatus    @default(placed)
   fulfilmentType FulfilmentType @map("fulfilment_type")
 
   dropoffLat     Float?  @map("dropoff_lat")
@@ -497,15 +498,15 @@ model Flyer {
 // ============================================================================
 
 model Courier {
-  id          String      @id @db.Uuid
-  mode        CourierMode
-  maxRadiusM  Int         @default(2000) @map("max_radius_m")
-  isOnline    Boolean     @default(false) @map("is_online")
-  vehicleReg  String?     @map("vehicle_reg")
-  idDocUrl    String?     @map("id_doc_url")
-  isVerified  Boolean     @default(false) @map("is_verified")
-  ratingAvg   Decimal?    @map("rating_avg") @db.Decimal(2, 1)
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String      @id @db.Uuid
+  mode       CourierMode
+  maxRadiusM Int         @default(2000) @map("max_radius_m")
+  isOnline   Boolean     @default(false) @map("is_online")
+  vehicleReg String?     @map("vehicle_reg")
+  idDocUrl   String?     @map("id_doc_url")
+  isVerified Boolean     @default(false) @map("is_verified")
+  ratingAvg  Decimal?    @map("rating_avg") @db.Decimal(2, 1)
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
 
   profile    Profile    @relation(fields: [id], references: [id], onDelete: Cascade)
   deliveries Delivery[]

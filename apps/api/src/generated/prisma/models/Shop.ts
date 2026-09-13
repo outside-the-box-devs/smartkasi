@@ -54,6 +54,7 @@ export type ShopMinAggregateOutputType = {
   licenceStatus: $Enums.LicenceStatus | null
   licenceDocUrl: string | null
   licenceExpiresAt: Date | null
+  licenceRejectionReason: string | null
   mode: $Enums.ShopMode | null
   acceptsOrders: boolean | null
   acceptsDelivery: boolean | null
@@ -82,6 +83,7 @@ export type ShopMaxAggregateOutputType = {
   licenceStatus: $Enums.LicenceStatus | null
   licenceDocUrl: string | null
   licenceExpiresAt: Date | null
+  licenceRejectionReason: string | null
   mode: $Enums.ShopMode | null
   acceptsOrders: boolean | null
   acceptsDelivery: boolean | null
@@ -110,6 +112,7 @@ export type ShopCountAggregateOutputType = {
   licenceStatus: number
   licenceDocUrl: number
   licenceExpiresAt: number
+  licenceRejectionReason: number
   mode: number
   acceptsOrders: number
   acceptsDelivery: number
@@ -150,6 +153,7 @@ export type ShopMinAggregateInputType = {
   licenceStatus?: true
   licenceDocUrl?: true
   licenceExpiresAt?: true
+  licenceRejectionReason?: true
   mode?: true
   acceptsOrders?: true
   acceptsDelivery?: true
@@ -178,6 +182,7 @@ export type ShopMaxAggregateInputType = {
   licenceStatus?: true
   licenceDocUrl?: true
   licenceExpiresAt?: true
+  licenceRejectionReason?: true
   mode?: true
   acceptsOrders?: true
   acceptsDelivery?: true
@@ -206,6 +211,7 @@ export type ShopCountAggregateInputType = {
   licenceStatus?: true
   licenceDocUrl?: true
   licenceExpiresAt?: true
+  licenceRejectionReason?: true
   mode?: true
   acceptsOrders?: true
   acceptsDelivery?: true
@@ -321,6 +327,7 @@ export type ShopGroupByOutputType = {
   licenceStatus: $Enums.LicenceStatus
   licenceDocUrl: string | null
   licenceExpiresAt: Date | null
+  licenceRejectionReason: string | null
   mode: $Enums.ShopMode
   acceptsOrders: boolean
   acceptsDelivery: boolean
@@ -372,6 +379,7 @@ export type ShopWhereInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFilter<"Shop"> | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.StringNullableFilter<"Shop"> | string | null
   licenceExpiresAt?: Prisma.DateTimeNullableFilter<"Shop"> | Date | string | null
+  licenceRejectionReason?: Prisma.StringNullableFilter<"Shop"> | string | null
   mode?: Prisma.EnumShopModeFilter<"Shop"> | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFilter<"Shop"> | boolean
   acceptsDelivery?: Prisma.BoolFilter<"Shop"> | boolean
@@ -408,6 +416,7 @@ export type ShopOrderByWithRelationInput = {
   licenceStatus?: Prisma.SortOrder
   licenceDocUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   licenceExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  licenceRejectionReason?: Prisma.SortOrderInput | Prisma.SortOrder
   mode?: Prisma.SortOrder
   acceptsOrders?: Prisma.SortOrder
   acceptsDelivery?: Prisma.SortOrder
@@ -447,6 +456,7 @@ export type ShopWhereUniqueInput = Prisma.AtLeast<{
   licenceStatus?: Prisma.EnumLicenceStatusFilter<"Shop"> | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.StringNullableFilter<"Shop"> | string | null
   licenceExpiresAt?: Prisma.DateTimeNullableFilter<"Shop"> | Date | string | null
+  licenceRejectionReason?: Prisma.StringNullableFilter<"Shop"> | string | null
   mode?: Prisma.EnumShopModeFilter<"Shop"> | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFilter<"Shop"> | boolean
   acceptsDelivery?: Prisma.BoolFilter<"Shop"> | boolean
@@ -483,6 +493,7 @@ export type ShopOrderByWithAggregationInput = {
   licenceStatus?: Prisma.SortOrder
   licenceDocUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   licenceExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  licenceRejectionReason?: Prisma.SortOrderInput | Prisma.SortOrder
   mode?: Prisma.SortOrder
   acceptsOrders?: Prisma.SortOrder
   acceptsDelivery?: Prisma.SortOrder
@@ -519,6 +530,7 @@ export type ShopScalarWhereWithAggregatesInput = {
   licenceStatus?: Prisma.EnumLicenceStatusWithAggregatesFilter<"Shop"> | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.StringNullableWithAggregatesFilter<"Shop"> | string | null
   licenceExpiresAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Shop"> | Date | string | null
+  licenceRejectionReason?: Prisma.StringNullableWithAggregatesFilter<"Shop"> | string | null
   mode?: Prisma.EnumShopModeWithAggregatesFilter<"Shop"> | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolWithAggregatesFilter<"Shop"> | boolean
   acceptsDelivery?: Prisma.BoolWithAggregatesFilter<"Shop"> | boolean
@@ -546,6 +558,7 @@ export type ShopCreateInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -582,6 +595,7 @@ export type ShopUncheckedCreateInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -616,6 +630,7 @@ export type ShopUpdateInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -652,6 +667,7 @@ export type ShopUncheckedUpdateInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -687,6 +703,7 @@ export type ShopCreateManyInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -714,6 +731,7 @@ export type ShopUpdateManyMutationInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -742,6 +760,7 @@ export type ShopUncheckedUpdateManyInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -780,6 +799,7 @@ export type ShopCountOrderByAggregateInput = {
   licenceStatus?: Prisma.SortOrder
   licenceDocUrl?: Prisma.SortOrder
   licenceExpiresAt?: Prisma.SortOrder
+  licenceRejectionReason?: Prisma.SortOrder
   mode?: Prisma.SortOrder
   acceptsOrders?: Prisma.SortOrder
   acceptsDelivery?: Prisma.SortOrder
@@ -813,6 +833,7 @@ export type ShopMaxOrderByAggregateInput = {
   licenceStatus?: Prisma.SortOrder
   licenceDocUrl?: Prisma.SortOrder
   licenceExpiresAt?: Prisma.SortOrder
+  licenceRejectionReason?: Prisma.SortOrder
   mode?: Prisma.SortOrder
   acceptsOrders?: Prisma.SortOrder
   acceptsDelivery?: Prisma.SortOrder
@@ -841,6 +862,7 @@ export type ShopMinOrderByAggregateInput = {
   licenceStatus?: Prisma.SortOrder
   licenceDocUrl?: Prisma.SortOrder
   licenceExpiresAt?: Prisma.SortOrder
+  licenceRejectionReason?: Prisma.SortOrder
   mode?: Prisma.SortOrder
   acceptsOrders?: Prisma.SortOrder
   acceptsDelivery?: Prisma.SortOrder
@@ -1045,6 +1067,7 @@ export type ShopCreateWithoutOwnerInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1079,6 +1102,7 @@ export type ShopUncheckedCreateWithoutOwnerInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1143,6 +1167,7 @@ export type ShopScalarWhereInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFilter<"Shop"> | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.StringNullableFilter<"Shop"> | string | null
   licenceExpiresAt?: Prisma.DateTimeNullableFilter<"Shop"> | Date | string | null
+  licenceRejectionReason?: Prisma.StringNullableFilter<"Shop"> | string | null
   mode?: Prisma.EnumShopModeFilter<"Shop"> | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFilter<"Shop"> | boolean
   acceptsDelivery?: Prisma.BoolFilter<"Shop"> | boolean
@@ -1170,6 +1195,7 @@ export type ShopCreateWithoutStaffInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1205,6 +1231,7 @@ export type ShopUncheckedCreateWithoutStaffInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1254,6 +1281,7 @@ export type ShopUpdateWithoutStaffInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1289,6 +1317,7 @@ export type ShopUncheckedUpdateWithoutStaffInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1322,6 +1351,7 @@ export type ShopCreateWithoutCreatedProductsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1357,6 +1387,7 @@ export type ShopUncheckedCreateWithoutCreatedProductsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1406,6 +1437,7 @@ export type ShopUpdateWithoutCreatedProductsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1441,6 +1473,7 @@ export type ShopUncheckedUpdateWithoutCreatedProductsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1474,6 +1507,7 @@ export type ShopCreateWithoutShopProductsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1509,6 +1543,7 @@ export type ShopUncheckedCreateWithoutShopProductsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1558,6 +1593,7 @@ export type ShopUpdateWithoutShopProductsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1593,6 +1629,7 @@ export type ShopUncheckedUpdateWithoutShopProductsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1626,6 +1663,7 @@ export type ShopCreateWithoutStockMovementsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1661,6 +1699,7 @@ export type ShopUncheckedCreateWithoutStockMovementsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1710,6 +1749,7 @@ export type ShopUpdateWithoutStockMovementsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1745,6 +1785,7 @@ export type ShopUncheckedUpdateWithoutStockMovementsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1778,6 +1819,7 @@ export type ShopCreateWithoutSalesInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1813,6 +1855,7 @@ export type ShopUncheckedCreateWithoutSalesInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1862,6 +1905,7 @@ export type ShopUpdateWithoutSalesInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1897,6 +1941,7 @@ export type ShopUncheckedUpdateWithoutSalesInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -1930,6 +1975,7 @@ export type ShopCreateWithoutOrderShopsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -1965,6 +2011,7 @@ export type ShopUncheckedCreateWithoutOrderShopsInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2014,6 +2061,7 @@ export type ShopUpdateWithoutOrderShopsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2049,6 +2097,7 @@ export type ShopUncheckedUpdateWithoutOrderShopsInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2082,6 +2131,7 @@ export type ShopCreateWithoutFlyersInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2117,6 +2167,7 @@ export type ShopUncheckedCreateWithoutFlyersInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2166,6 +2217,7 @@ export type ShopUpdateWithoutFlyersInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2201,6 +2253,7 @@ export type ShopUncheckedUpdateWithoutFlyersInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2234,6 +2287,7 @@ export type ShopCreateManyOwnerInput = {
   licenceStatus?: $Enums.LicenceStatus
   licenceDocUrl?: string | null
   licenceExpiresAt?: Date | string | null
+  licenceRejectionReason?: string | null
   mode?: $Enums.ShopMode
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2261,6 +2315,7 @@ export type ShopUpdateWithoutOwnerInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2295,6 +2350,7 @@ export type ShopUncheckedUpdateWithoutOwnerInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2329,6 +2385,7 @@ export type ShopUncheckedUpdateManyWithoutOwnerInput = {
   licenceStatus?: Prisma.EnumLicenceStatusFieldUpdateOperationsInput | $Enums.LicenceStatus
   licenceDocUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   licenceExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  licenceRejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   mode?: Prisma.EnumShopModeFieldUpdateOperationsInput | $Enums.ShopMode
   acceptsOrders?: Prisma.BoolFieldUpdateOperationsInput | boolean
   acceptsDelivery?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -2442,6 +2499,7 @@ export type ShopSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   licenceStatus?: boolean
   licenceDocUrl?: boolean
   licenceExpiresAt?: boolean
+  licenceRejectionReason?: boolean
   mode?: boolean
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2479,6 +2537,7 @@ export type ShopSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   licenceStatus?: boolean
   licenceDocUrl?: boolean
   licenceExpiresAt?: boolean
+  licenceRejectionReason?: boolean
   mode?: boolean
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2508,6 +2567,7 @@ export type ShopSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   licenceStatus?: boolean
   licenceDocUrl?: boolean
   licenceExpiresAt?: boolean
+  licenceRejectionReason?: boolean
   mode?: boolean
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2537,6 +2597,7 @@ export type ShopSelectScalar = {
   licenceStatus?: boolean
   licenceDocUrl?: boolean
   licenceExpiresAt?: boolean
+  licenceRejectionReason?: boolean
   mode?: boolean
   acceptsOrders?: boolean
   acceptsDelivery?: boolean
@@ -2547,7 +2608,7 @@ export type ShopSelectScalar = {
   updatedAt?: boolean
 }
 
-export type ShopOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "ownerId" | "name" | "slug" | "description" | "phone" | "logoUrl" | "lat" | "lng" | "addressLine" | "township" | "city" | "province" | "tradingLicenceNo" | "licenceStatus" | "licenceDocUrl" | "licenceExpiresAt" | "mode" | "acceptsOrders" | "acceptsDelivery" | "isActive" | "opensAt" | "closesAt" | "createdAt" | "updatedAt", ExtArgs["result"]["shop"]>
+export type ShopOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "ownerId" | "name" | "slug" | "description" | "phone" | "logoUrl" | "lat" | "lng" | "addressLine" | "township" | "city" | "province" | "tradingLicenceNo" | "licenceStatus" | "licenceDocUrl" | "licenceExpiresAt" | "licenceRejectionReason" | "mode" | "acceptsOrders" | "acceptsDelivery" | "isActive" | "opensAt" | "closesAt" | "createdAt" | "updatedAt", ExtArgs["result"]["shop"]>
 export type ShopInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   owner?: boolean | Prisma.ProfileDefaultArgs<ExtArgs>
   staff?: boolean | Prisma.Shop$staffArgs<ExtArgs>
@@ -2596,6 +2657,7 @@ export type $ShopPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     licenceStatus: $Enums.LicenceStatus
     licenceDocUrl: string | null
     licenceExpiresAt: Date | null
+    licenceRejectionReason: string | null
     mode: $Enums.ShopMode
     acceptsOrders: boolean
     acceptsDelivery: boolean
@@ -3052,6 +3114,7 @@ export interface ShopFieldRefs {
   readonly licenceStatus: Prisma.FieldRef<"Shop", 'LicenceStatus'>
   readonly licenceDocUrl: Prisma.FieldRef<"Shop", 'String'>
   readonly licenceExpiresAt: Prisma.FieldRef<"Shop", 'DateTime'>
+  readonly licenceRejectionReason: Prisma.FieldRef<"Shop", 'String'>
   readonly mode: Prisma.FieldRef<"Shop", 'ShopMode'>
   readonly acceptsOrders: Prisma.FieldRef<"Shop", 'Boolean'>
   readonly acceptsDelivery: Prisma.FieldRef<"Shop", 'Boolean'>

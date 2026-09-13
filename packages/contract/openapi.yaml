@@ -450,6 +450,12 @@ paths:
         not what a reviewer decided. A licence that should not have been verified
         is `rejected`.
 
+        `rejection_reason` is required when `licence_status` is `rejected` — the
+        owner sees it verbatim, so this is where "we are waiting on you" stops
+        being a mystery (§ 9.3). It is dropped for every other status: a reason
+        left over from a since-superseded rejection must not keep reading as
+        current.
+
         `422` if the shop never submitted a licence, or if the expiry date being
         verified is already in the past.
       operationId: setLicenceStatus
@@ -469,6 +475,11 @@ paths:
                   type: string
                   format: date
                   description: "Only written when sent. Omit to keep what the owner submitted."
+                rejection_reason:
+                  type: string
+                  maxLength: 500
+                  description: "Required when `licence_status` is `rejected`. Ignored — and cleared — otherwise."
+                  example: "Licence number doesn't match the document on file."
       responses:
         "200":
           description: The updated shop.
@@ -479,7 +490,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422":
-          description: "`VALIDATION_FAILED` — nothing submitted to verify, or the licence has already expired."
+          description: "`VALIDATION_FAILED` — nothing submitted to verify, the licence has already expired, or `licence_status: rejected` with no `rejection_reason`."
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -2570,6 +2581,9 @@ components:
             trading_licence_no: { type: [string, "null"] }
             licence_status: { $ref: "#/components/schemas/LicenceStatus" }
             licence_expires_at: { type: [string, "null"], format: date }
+            licence_rejection_reason:
+              type: [string, "null"]
+              description: "Set only while `licence_status` is `rejected`. Null otherwise."
             opens_at: { type: [string, "null"],  example: "07:00" }
             closes_at: { type: [string, "null"],  example: "20:00" }
             is_active: { type: boolean }
@@ -3177,6 +3191,7 @@ components:
         licence_status: { $ref: "#/components/schemas/LicenceStatus" }
         licence_doc_url: { type: [string, "null"], format: uri }
         licence_expires_at: { type: [string, "null"], format: date }
+        licence_rejection_reason: { type: [string, "null"] }
         mode: { $ref: "#/components/schemas/ShopMode" }
         accepts_orders: { type: boolean }
         is_active: { type: boolean }

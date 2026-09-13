@@ -10,6 +10,7 @@ import {
   IsString,
   IsUrl,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { GeoQuery } from '../../common/dto/geo.dto';
 import { PaginationQuery } from '../../common/dto/pagination.dto';
@@ -109,6 +110,18 @@ export class SetLicenceStatusDto {
   @IsOptional()
   @IsDateString()
   licence_expires_at?: string;
+
+  /**
+   * Required exactly when `licence_status` is `rejected` — a rejection with no
+   * reason leaves the owner staring at a red banner with nothing to act on
+   * (see docs/API_CONTRACT.md § 8/§ 9.3). Ignored, and cleared in the service,
+   * for every other status: a reason from a superseded rejection must not
+   * outlive the decision that replaced it.
+   */
+  @ValidateIf((o: SetLicenceStatusDto) => o.licence_status === 'rejected')
+  @IsString()
+  @MaxLength(500)
+  rejection_reason?: string;
 }
 
 export { GeoQuery };

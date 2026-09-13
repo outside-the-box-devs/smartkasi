@@ -230,6 +230,10 @@ export class ShopsService {
           ? new Date(dto.licence_expires_at)
           : undefined,
         licenceStatus: 'pending',
+        // A resubmission is a fresh review, not an appeal against the last
+        // one — the reason for a rejection that no longer applies must not
+        // still be showing once the owner has acted on it.
+        licenceRejectionReason: null,
       },
     });
 
@@ -294,6 +298,11 @@ export class ShopsService {
       where: { id: shopId },
       data: {
         licenceStatus: dto.licence_status,
+        // Only a rejection carries a reason. Anything else — including a
+        // re-verification — retires whatever reason was on file rather than
+        // leaving it to read as still current.
+        licenceRejectionReason:
+          dto.licence_status === 'rejected' ? dto.rejection_reason : null,
         ...(dto.licence_expires_at ? { licenceExpiresAt: expiresAt } : {}),
         ...(dto.licence_status === 'verified' ? {} : { acceptsOrders: false }),
       },
@@ -352,6 +361,7 @@ export class ShopsService {
       licence_status: r.licenceStatus,
       licence_expires_at:
         r.licenceExpiresAt?.toISOString().slice(0, 10) ?? null,
+      licence_rejection_reason: r.licenceRejectionReason,
       opens_at: timeToHHMM(r.opensAt),
       closes_at: timeToHHMM(r.closesAt),
       is_active: r.isActive,

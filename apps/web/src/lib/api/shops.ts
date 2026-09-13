@@ -24,6 +24,8 @@ export interface ShopDetail extends ShopSummary {
   phone: string | null;
   trading_licence_no: string | null;
   licence_doc_url: string | null;
+  /** Set only while licence_status is 'rejected'; null otherwise. */
+  licence_rejection_reason: string | null;
 }
 
 function toShop(raw: Record<string, unknown>): ShopSummary {
@@ -52,6 +54,7 @@ function toDetail(raw: Record<string, unknown>): ShopDetail {
     phone: pick<string>(raw, 'phone') ?? null,
     trading_licence_no: pick<string>(raw, 'trading_licence_no') ?? null,
     licence_doc_url: pick<string>(raw, 'licence_doc_url') ?? null,
+    licence_rejection_reason: pick<string>(raw, 'licence_rejection_reason') ?? null,
   };
 }
 

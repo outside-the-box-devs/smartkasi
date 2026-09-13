@@ -115,10 +115,11 @@ create table shops (
 
   -- Compliance. accepts_orders is HARD-GATED on licence_status = 'verified'
   -- (see the check constraint). This is a legal requirement, not a nicety.
-  trading_licence_no  text,
-  licence_status      licence_status not null default 'none',
-  licence_doc_url     text,
-  licence_expires_at  date,
+  trading_licence_no        text,
+  licence_status            licence_status not null default 'none',
+  licence_doc_url           text,
+  licence_expires_at        date,
+  licence_rejection_reason  text,
 
   -- Operating posture. A shop can join as advertising_only (upload flyers,
   -- no POS, no orders) — that is the low-friction onboarding path.

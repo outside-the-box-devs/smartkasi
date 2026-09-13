@@ -130,6 +130,7 @@ export class AdminService {
         licence_doc_url: r.licenceDocUrl,
         licence_expires_at:
           r.licenceExpiresAt?.toISOString().slice(0, 10) ?? null,
+        licence_rejection_reason: r.licenceRejectionReason,
         mode: r.mode,
         accepts_orders: r.acceptsOrders,
         is_active: r.isActive,

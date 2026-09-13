@@ -1690,6 +1690,7 @@ export const ShopScalarFieldEnum = {
   licenceStatus: 'licenceStatus',
   licenceDocUrl: 'licenceDocUrl',
   licenceExpiresAt: 'licenceExpiresAt',
+  licenceRejectionReason: 'licenceRejectionReason',
   mode: 'mode',
   acceptsOrders: 'acceptsOrders',
   acceptsDelivery: 'acceptsDelivery',
