@@ -5,17 +5,19 @@ import { VStack, HStack } from "@astryxdesign/core/Stack";
 import { Grid } from "@astryxdesign/core/Grid";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { Badge } from "@astryxdesign/core/Badge";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Button } from "@astryxdesign/core/Button";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Banner } from "@astryxdesign/core/Banner";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useShops, useLowStock } from "@/hooks/use-shops";
-import { useCountUp } from "@/hooks/use-count-up";
+import { friendlyLicence, licenceDotVariant } from "@/lib/api/shops";
+import Stat from "@/components/Stat";
 
 export default function DashboardHome() {
   const router = useRouter();
   const { user } = useAuth();
-  const { data: shops = [], isLoading } = useShops({ owner_id: "me" });
+  const { data: shops = [], isLoading, isError } = useShops({ owner_id: "me" });
   const lowStockCount = useLowStock(shops.map((s) => s.id)).data?.length ?? 0;
 
   const verified = shops.filter((s) => s.licence_status === "verified").length;
@@ -32,7 +34,13 @@ export default function DashboardHome() {
         </Text>
       </VStack>
 
-      {isLoading ? (
+      {isError ? (
+        <Banner
+          status="error"
+          title="Can't load your shops right now"
+          description="Check your connection and refresh the page."
+        />
+      ) : isLoading ? (
         <DashboardSkeleton />
       ) : (
         <>
@@ -125,20 +133,15 @@ export default function DashboardHome() {
                         label={s.name}
                         onClick={() => router.push(`/dashboard/shops/${s.id}`)}
                       />
-                      <Badge
-                        variant={
-                          s.licence_status === "verified"
-                            ? "success"
-                            : s.licence_status === "pending"
-                              ? "warning"
-                              : "neutral"
-                        }
-                        label={
-                          s.licence_status === "verified"
-                            ? "Verified"
-                            : s.licence_status
-                        }
-                      />
+                      <HStack gap={2} style={{ alignItems: "center" }}>
+                        <StatusDot
+                          variant={licenceDotVariant(s.licence_status)}
+                          label={friendlyLicence(s.licence_status)}
+                        />
+                        <Text type="supporting">
+                          {friendlyLicence(s.licence_status)}
+                        </Text>
+                      </HStack>
                     </HStack>
                   ))
                 )}
@@ -177,39 +180,3 @@ function DashboardSkeleton() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  hint,
-  tone,
-  index,
-}: {
-  label: string;
-  value: number;
-  hint?: string;
-  tone?: "warning";
-  index: number;
-}) {
-  const display = useCountUp(value);
-  return (
-    <Card className="sk-enter" style={{ animationDelay: `${index * 70}ms` }}>
-      <VStack gap={1}>
-        <Text type="supporting">{label}</Text>
-        <Heading level={3}>{display}</Heading>
-        {hint && (
-          <Text
-            type="supporting"
-            style={{
-              color:
-                tone === "warning" && value > 0
-                  ? "var(--color-warning)"
-                  : undefined,
-            }}
-          >
-            {hint}
-          </Text>
-        )}
-      </VStack>
-    </Card>
-  );
-}

@@ -5,6 +5,7 @@ import { VStack, HStack } from '@astryxdesign/core/Stack';
 import { Card } from '@astryxdesign/core/Card';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Badge } from '@astryxdesign/core/Badge';
+import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Button } from '@astryxdesign/core/Button';
 import { Table, proportional, pixel } from '@astryxdesign/core/Table';
 import { TextInput } from '@astryxdesign/core/TextInput';
@@ -88,7 +89,12 @@ export default function InventoryPanel({ shopId }: { shopId: string }) {
     { key: 'stock', header: 'In stock', width: pixel(110), renderCell: (it: any) => (
       <HStack gap={2} style={{ alignItems: 'center' }}>
         <Text>{it.stock_qty}</Text>
-        {it.is_low_stock && <Badge variant="warning" label="Low" />}
+        {it.is_low_stock && (
+          <HStack gap={1} style={{ alignItems: 'center' }}>
+            <StatusDot variant="warning" label="Low stock" />
+            <Text type="supporting">Low</Text>
+          </HStack>
+        )}
       </HStack>
     )},
     {
@@ -96,7 +102,13 @@ export default function InventoryPanel({ shopId }: { shopId: string }) {
       header: '',
       width: pixel(110),
       renderCell: (it: any) => (
-        <Badge variant={it.is_available ? 'success' : 'neutral'} label={it.is_available ? 'On shelf' : 'Hidden'} />
+        <HStack gap={2} style={{ alignItems: 'center' }}>
+          <StatusDot
+            variant={it.is_available ? 'success' : 'neutral'}
+            label={it.is_available ? 'On shelf' : 'Hidden'}
+          />
+          <Text type="supporting">{it.is_available ? 'On shelf' : 'Hidden'}</Text>
+        </HStack>
       ),
     },
     {

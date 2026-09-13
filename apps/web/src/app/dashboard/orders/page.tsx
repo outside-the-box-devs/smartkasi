@@ -14,6 +14,10 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Selector } from "@astryxdesign/core/Selector";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
 import { Divider } from "@astryxdesign/core/Divider";
 import { useShops } from "@/hooks/use-shops";
 import {
@@ -124,20 +128,15 @@ export default function OrdersPage() {
                 options={shops.map((s) => ({ label: s.name, value: s.id }))}
               />
             )}
-            <VStack gap={1}>
-              <Text type="supporting">Status</Text>
-              <HStack gap={2} style={{ flexWrap: "wrap" }}>
-                {FILTERS.map((f) => (
-                  <Button
-                    key={f.value}
-                    size="sm"
-                    variant={status === f.value ? "primary" : "secondary"}
-                    label={f.label}
-                    onClick={() => setStatus(f.value)}
-                  />
-                ))}
-              </HStack>
-            </VStack>
+            <SegmentedControl
+              label="Status"
+              value={status}
+              onChange={(v) => setStatus(v as StatusFilter)}
+            >
+              {FILTERS.map((f) => (
+                <SegmentedControlItem key={f.value} value={f.value} label={f.label} />
+              ))}
+            </SegmentedControl>
           </HStack>
 
           {isError && (
@@ -227,13 +226,13 @@ function OrderCard({
   onReject: () => void;
   onReady: () => void;
 }) {
-  const badgeVariant =
+  const statusDotVariant =
     leg.status === "ready" || leg.status === "collected"
       ? "success"
       : leg.status === "rejected" || leg.status === "cancelled"
         ? "neutral"
         : leg.status === "accepted"
-          ? "teal"
+          ? "accent"
           : "warning";
 
   return (
@@ -248,17 +247,20 @@ function OrderCard({
           }}
         >
           <Heading level={4}>{leg.order_number}</Heading>
-          <HStack gap={2}>
+          <HStack gap={3} style={{ alignItems: "center" }}>
             <Badge
               variant="neutral"
               label={
                 leg.fulfilment_type === "collection" ? "Collection" : "Delivery"
               }
             />
-            <Badge
-              variant={badgeVariant}
-              label={friendlyOrderStatus(leg.status)}
-            />
+            <HStack gap={2} style={{ alignItems: "center" }}>
+              <StatusDot
+                variant={statusDotVariant}
+                label={friendlyOrderStatus(leg.status)}
+              />
+              <Text type="supporting">{friendlyOrderStatus(leg.status)}</Text>
+            </HStack>
           </HStack>
         </HStack>
 
@@ -298,7 +300,7 @@ function OrderCard({
                   isDisabled={busy}
                 />
                 <Button
-                  variant="secondary"
+                  variant="destructive"
                   label="Out of stock"
                   onClick={onReject}
                   isDisabled={busy}

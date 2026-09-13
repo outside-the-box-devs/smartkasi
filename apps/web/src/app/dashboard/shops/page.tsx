@@ -9,18 +9,20 @@ import { Heading, Text } from "@astryxdesign/core/Text";
 import { Button } from "@astryxdesign/core/Button";
 import { Table, proportional, pixel } from "@astryxdesign/core/Table";
 import type { TableColumn } from "@astryxdesign/core/Table";
-import { Badge } from "@astryxdesign/core/Badge";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Divider } from "@astryxdesign/core/Divider";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useShops, useLowStock } from "@/hooks/use-shops";
-import { friendlyLicence } from "@/lib/api/shops";
+import { friendlyLicence, licenceDotVariant } from "@/lib/api/shops";
 import type { ShopSummary } from "@/lib/api/shops";
 import ShopMap from "@/components/ShopMap";
 import LowStockAlert from "@/components/LowStockAlert";
+import Stat from "@/components/Stat";
 
 type ModeFilter = "" | ShopSummary["mode"];
 type LicenceFilter = "" | ShopSummary["licence_status"];
@@ -94,16 +96,13 @@ function ShopsPageInner() {
       header: "Licence",
       width: pixel(140),
       renderCell: (r) => (
-        <Badge
-          variant={
-            r.licence_status === "verified"
-              ? "success"
-              : r.licence_status === "pending"
-                ? "warning"
-                : "neutral"
-          }
-          label={friendlyLicence(r.licence_status)}
-        />
+        <HStack gap={2} style={{ alignItems: "center" }}>
+          <StatusDot
+            variant={licenceDotVariant(r.licence_status)}
+            label={friendlyLicence(r.licence_status)}
+          />
+          <Text type="supporting">{friendlyLicence(r.licence_status)}</Text>
+        </HStack>
       ),
     },
     {
@@ -164,15 +163,18 @@ function ShopsPageInner() {
       </HStack>
 
       <Grid gap={4} columns={{ minWidth: 220, max: 3 }}>
-        <StatCard label="Shops" value={shops.length} />
-        <StatCard
+        <Stat label="Shops" value={shops.length} index={0} />
+        <Stat
           label="Licences verified"
           value={shops.filter((s) => s.licence_status === "verified").length}
+          index={1}
         />
-        <StatCard
+        <Stat
           label="Items running low"
           value={lowStockCount}
+          hint={lowStockCount > 0 ? "need restocking" : undefined}
           tone={lowStockCount > 0 ? "warning" : undefined}
+          index={2}
         />
       </Grid>
 
@@ -228,11 +230,30 @@ function ShopsPageInner() {
           <LoadingRows />
         ) : filtered.length === 0 ? (
           <EmptyState
-            title="No shops match"
-            body={
+            title={shops.length === 0 ? "No shops yet" : "No shops match"}
+            description={
               shops.length === 0
                 ? "Add your first shop to get started."
                 : "Try clearing the search or filters."
+            }
+            actions={
+              shops.length === 0 ? (
+                <Button
+                  variant="primary"
+                  label="Add a shop"
+                  onClick={() => router.push("/dashboard/shops/new")}
+                />
+              ) : (
+                <Button
+                  variant="secondary"
+                  label="Clear filters"
+                  onClick={() => {
+                    setQ("");
+                    setMode("");
+                    setLicence("");
+                  }}
+                />
+              )
             }
           />
         ) : (
@@ -274,25 +295,6 @@ function ShopsPageInner() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone?: "warning";
-}) {
-  return (
-    <Card>
-      <VStack gap={1}>
-        <Text type="supporting">{label}</Text>
-        <Heading level={3}>{value}</Heading>
-      </VStack>
-    </Card>
-  );
-}
-
 function InfoCard({ title, body }: { title: string; body: string }) {
   return (
     <Card>
@@ -319,13 +321,3 @@ function LoadingRows() {
   );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <VStack gap={1}>
-      <Heading level={4}>{title}</Heading>
-      <Text type="body" color="secondary">
-        {body}
-      </Text>
-    </VStack>
-  );
-}
