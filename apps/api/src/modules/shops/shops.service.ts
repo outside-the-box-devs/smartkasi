@@ -124,6 +124,8 @@ export class ShopsService {
           province: dto.province,
           opensAt: parseTime(dto.opens_at),
           closesAt: parseTime(dto.closes_at),
+          mode: dto.mode,
+          isActive: dto.is_active,
         },
       });
 
@@ -171,6 +173,9 @@ export class ShopsService {
         phone: dto.phone,
         logoUrl: dto.logo_url,
         addressLine: dto.address_line,
+        township: dto.township,
+        city: dto.city,
+        province: dto.province,
         lat: dto.lat,
         lng: dto.lng,
         opensAt: parseTime(dto.opens_at),
@@ -183,6 +188,32 @@ export class ShopsService {
     });
 
     return this.get(shopId);
+  }
+
+  /**
+   * Hard-deletes a shop. Only reachable while the shop has no order history —
+   * `order_shops.shop_id` is `ON DELETE RESTRICT` for exactly this reason, but
+   * we check first so the caller gets `SHOP_HAS_ORDERS` instead of a raw FK
+   * violation. Everything else (inventory, sales, staff, follows) cascades.
+   *
+   * Exists for the shop-creation wizard's Cancel: the shop is created early
+   * (step 2) so step 3 can use its id, so backing all the way out and
+   * cancelling must actually undo the create, not leave an empty orphan shop.
+   */
+  async remove(user: AuthUser, shopId: string): Promise<void> {
+    const perms = await this.access.require(user, shopId);
+    if (!perms.isOwner)
+      throw ApiError.forbidden('Only the owner can delete this shop');
+
+    const orderCount = await this.prisma.orderShop.count({ where: { shopId } });
+    if (orderCount > 0) {
+      throw ApiError.unprocessable(
+        ApiErrorCode.SHOP_HAS_ORDERS,
+        'This shop has order history and can no longer be deleted — deactivate it instead',
+      );
+    }
+
+    await this.prisma.shop.delete({ where: { id: shopId } });
   }
 
   async submitLicence(user: AuthUser, shopId: string, dto: SubmitLicenceDto) {
