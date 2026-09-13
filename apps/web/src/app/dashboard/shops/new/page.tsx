@@ -14,18 +14,35 @@ import { Heading, Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { TextArea } from '@astryxdesign/core/TextArea';
+import { NumberInput } from '@astryxdesign/core/NumberInput';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { Icon } from '@astryxdesign/core/Icon';
+import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
+import { Switch } from '@astryxdesign/core/Switch';
 import LocationPicker from '@/components/LocationPicker';
 import type { PickedLocation } from '@/components/LocationPicker';
 import BarcodeScanner from '@/components/BarcodeScanner';
-import { useCreateShop } from '@/hooks/use-shops';
+import { useCreateShop, useUpdateShop, useDeleteShop } from '@/hooks/use-shops';
+import type { ShopMode } from '@/lib/api/shops';
 import { catalogApi } from '@/lib/api/catalog';
 import { inventoryApi, rands } from '@/lib/api/inventory';
 import { useFeedback } from '@/hooks/use-feedback';
+
+/** A price like "85" or "85.00" — no letters, no negative, no more than 2dp. */
+const PRICE_RE = /^\d+(\.\d{1,2})?$/;
+
+function priceError(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  if (!PRICE_RE.test(v) || parseFloat(v) <= 0) {
+    return 'Enter a price greater than 0, like 85.00';
+  }
+  return null;
+}
 
 const TOTAL_STEPS = 3;
 
@@ -45,6 +62,8 @@ interface Draft {
   province: string;
   lat: number;
   lng: number;
+  mode: ShopMode;
+  isActive: boolean;
 }
 
 const INITIAL_DRAFT: Draft = {
@@ -58,6 +77,10 @@ const INITIAL_DRAFT: Draft = {
   // Soweto centre until the owner picks a spot.
   lat: -26.2461,
   lng: 27.9212,
+  // Matches the API's own defaults — visible immediately, but with no live
+  // stock or ordering until the owner opts into more.
+  mode: 'advertising_only',
+  isActive: true,
 };
 
 function applyLocation(draft: Draft, loc: Partial<PickedLocation>): Draft {
@@ -77,50 +100,86 @@ function applyLocation(draft: Draft, loc: Partial<PickedLocation>): Draft {
 export default function NewShopPage() {
   const router = useRouter();
   const createShop = useCreateShop();
+  const updateShop = useUpdateShop();
+  const deleteShop = useDeleteShop();
 
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState<Draft>(INITIAL_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [createdShopId, setCreatedShopId] = useState<string | null>(null);
+  const isSaving = createShop.isPending || updateShop.isPending;
 
   function update(patch: Partial<Draft>) {
     setDraft((d) => ({ ...d, ...patch }));
     setError(null);
   }
 
-  async function createTheShop() {
+  // Step 2's primary action does double duty: the first time through it
+  // creates the shop; if the owner came Back from step 3 to fix something,
+  // the shop already exists so this patches it instead of creating a
+  // duplicate.
+  async function createOrSaveShop() {
     if (!draft.name.trim() || !draft.address_line.trim()) {
       setError('A shop name and street address are required.');
       return;
     }
     setError(null);
+    const payload = {
+      name: draft.name.trim(),
+      address_line: draft.address_line.trim(),
+      township: draft.township.trim() || undefined,
+      city: draft.city.trim() || undefined,
+      province: draft.province.trim() || undefined,
+      phone: draft.phone.trim() || undefined,
+      description: draft.description.trim() || undefined,
+      lat: draft.lat,
+      lng: draft.lng,
+      mode: draft.mode,
+      is_active: draft.isActive,
+    };
     try {
-      const shop = await createShop.mutateAsync({
-        name: draft.name.trim(),
-        address_line: draft.address_line.trim(),
-        township: draft.township.trim() || undefined,
-        city: draft.city.trim() || undefined,
-        province: draft.province.trim() || undefined,
-        phone: draft.phone.trim() || undefined,
-        description: draft.description.trim() || undefined,
-        lat: draft.lat,
-        lng: draft.lng,
-      });
-      setCreatedShopId(shop.id);
+      if (createdShopId) {
+        await updateShop.mutateAsync({ id: createdShopId, patch: payload });
+      } else {
+        const shop = await createShop.mutateAsync(payload);
+        setCreatedShopId(shop.id);
+      }
       setStep(3);
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
-          : 'Could not create the shop — try again.',
+          : 'Could not save the shop — try again.',
       );
     }
   }
 
   function goBack() {
     setError(null);
-    if (step === 1) router.push('/dashboard/shops');
-    else setStep(step - 1);
+    setStep((s) => s - 1);
+  }
+
+  // Cancel is only reachable at step 1, but a shop may already exist by then
+  // (create-then-Back-then-Cancel) — the wizard is one unit of work, so
+  // cancelling it must undo the create instead of leaving an empty orphan
+  // shop behind. Deletion failing (already has stock, say) surfaces the
+  // error and keeps the wizard open rather than silently discarding it.
+  async function cancelWizard() {
+    if (!createdShopId) {
+      router.push('/dashboard/shops');
+      return;
+    }
+    setError(null);
+    try {
+      await deleteShop.mutateAsync(createdShopId);
+      router.push('/dashboard/shops');
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not discard this shop — try again.',
+      );
+    }
   }
 
   return (
@@ -158,21 +217,27 @@ export default function NewShopPage() {
           <LocationStep
             draft={draft}
             onChange={(patch) => update(patch)}
-            isCreating={createShop.isPending}
+            isCreating={isSaving}
+            isEditing={!!createdShopId}
           />
         </Card>
       )}
       {step === 3 && createdShopId && (
-        <FirstStockStep shopId={createdShopId} shopName={draft.name.trim()} />
+        <FirstStockStep
+          shopId={createdShopId}
+          shopName={draft.name.trim()}
+          onBack={() => setStep(2)}
+        />
       )}
 
       {step < 3 && (
         <HStack gap={2} style={{ flexWrap: 'wrap' }}>
           <Button
             variant="ghost"
-            label={step === 1 ? 'Cancel' : 'Back'}
-            onClick={goBack}
-            isDisabled={createShop.isPending && step === 2}
+            label={step === 1 ? (deleteShop.isPending ? 'Discarding…' : 'Cancel') : 'Back'}
+            onClick={step === 1 ? cancelWizard : goBack}
+            isLoading={step === 1 && deleteShop.isPending}
+            isDisabled={(isSaving && step === 2) || (step === 1 && deleteShop.isPending)}
           />
           {step === 1 ? (
             <Button
@@ -184,9 +249,13 @@ export default function NewShopPage() {
           ) : (
             <Button
               variant="primary"
-              label={createShop.isPending ? 'Creating your shop…' : 'Create shop'}
-              onClick={createTheShop}
-              isLoading={createShop.isPending}
+              label={
+                isSaving
+                  ? (createdShopId ? 'Saving changes…' : 'Creating your shop…')
+                  : (createdShopId ? 'Save changes' : 'Create shop')
+              }
+              onClick={createOrSaveShop}
+              isLoading={isSaving}
               isDisabled={!draft.name.trim() || !draft.address_line.trim()}
             />
           )}
@@ -225,12 +294,49 @@ function AboutStep({
         rows={3}
         maxLength={280}
       />
+      <HStack gap={2} style={{ alignItems: 'flex-start' }}>
+        <Icon icon="info" color="accent" size="sm" />
+        <Text type="supporting" color="secondary">
+          Coming soon: AI will be able to turn a few words into a polished
+          description for you.
+        </Text>
+      </HStack>
       <TextInput
         label="Phone"
         value={draft.phone}
         onChange={(v) => onChange({ phone: v })}
         placeholder="+27…"
         htmlName="phone"
+      />
+      <Divider />
+      <RadioList
+        label="Shop type"
+        description="Change this any time — it doesn't affect the address or stock you set up."
+        value={draft.mode}
+        onChange={(v) => onChange({ mode: v as ShopMode })}
+      >
+        <RadioListItem
+          label="Advertising only"
+          value="advertising_only"
+          description="Show up on the map with your details. No prices or stock shown yet."
+        />
+        <RadioListItem
+          label="Stock only"
+          value="inventory_only"
+          description="List your products and prices so customers can compare, but they still buy in person."
+        />
+        <RadioListItem
+          label="Full store"
+          value="full"
+          description="Customers can browse your stock and order for delivery or collection, once your trading licence is verified."
+        />
+      </RadioList>
+      <Switch
+        label="Visible to customers"
+        description="Off keeps this shop private while you finish setting it up."
+        value={draft.isActive}
+        onChange={(checked) => onChange({ isActive: checked })}
+        labelSpacing="spread"
       />
     </VStack>
   );
@@ -240,10 +346,12 @@ function LocationStep({
   draft,
   onChange,
   isCreating,
+  isEditing,
 }: {
   draft: Draft;
   onChange: (patch: Partial<Draft>) => void;
   isCreating: boolean;
+  isEditing: boolean;
 }) {
   return (
     <VStack gap={4}>
@@ -288,7 +396,7 @@ function LocationStep({
       </HStack>
       {isCreating && (
         <Text type="supporting" color="secondary">
-          Creating your shop — hang on a moment…
+          {isEditing ? 'Saving your changes — hang on a moment…' : 'Creating your shop — hang on a moment…'}
         </Text>
       )}
     </VStack>
@@ -296,49 +404,76 @@ function LocationStep({
 }
 
 interface AddedItem {
+  id: string;
   barcode: string;
   name: string;
   priceCents: number;
+  qty: number;
 }
 
 function FirstStockStep({
   shopId,
   shopName,
+  onBack,
 }: {
   shopId: string;
   shopName: string;
+  onBack: () => void;
 }) {
   const router = useRouter();
   const feedback = useFeedback();
   const [barcode, setBarcode] = useState('');
+  const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [qty, setQty] = useState<number | null>(1);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState<AddedItem[]>([]);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const priceMsg = priceError(price);
 
   function done() {
     router.push(`/dashboard/shops/${shopId}`);
   }
 
   async function addItem() {
-    if (!barcode.trim() || !price.trim()) return;
+    if (!barcode.trim() || !price.trim() || priceMsg) return;
     setAdding(true);
     try {
       // Same flow as the Stock panel: resolve (or create) the product, then
-      // put it on this shop's list at the selling price.
-      const product = await catalogApi.resolveBarcode(barcode.trim());
+      // put it on this shop's list at the selling price and quantity. `name`
+      // only takes effect when the barcode is genuinely new — an existing
+      // product keeps its catalog name regardless of what's typed here.
+      const product = await catalogApi.resolveBarcode(barcode.trim(), name.trim());
       const cents = Math.round(parseFloat(price) * 100);
-      await inventoryApi.add(shopId, product.id, cents);
+      const stockQty = qty ?? 0;
+      const item = await inventoryApi.add(shopId, product.id, cents, stockQty);
       setAdded((items) => [
-        { barcode: barcode.trim(), name: product.name, priceCents: cents },
+        { id: item.id, barcode: barcode.trim(), name: product.name, priceCents: cents, qty: stockQty },
         ...items,
       ]);
       feedback.success(`${product.name} added to stock`, barcode.trim());
       setBarcode('');
+      setName('');
       setPrice('');
+      setQty(1);
     } catch {
       feedback.error("Couldn't add that item — check the barcode and price.", 'add-item');
     }
     setAdding(false);
+  }
+
+  // Soft-removes a line added by mistake — the inventory row stays (an
+  // audit/undo trail) but is marked unavailable so it doesn't show as stock.
+  async function removeItem(item: AddedItem) {
+    setRemovingId(item.id);
+    try {
+      await inventoryApi.update(shopId, item.id, { is_available: false });
+      setAdded((items) => items.filter((it) => it.id !== item.id));
+      feedback.success(`${item.name} removed`, item.id);
+    } catch {
+      feedback.error("Couldn't remove that item — try again.", 'remove-item');
+    }
+    setRemovingId(null);
   }
 
   return (
@@ -366,17 +501,36 @@ function FirstStockStep({
                 htmlName="barcode"
               />
               <TextInput
+                label="Item name"
+                description="Only used the first time this barcode is stocked anywhere"
+                value={name}
+                onChange={setName}
+                placeholder="e.g. White bread 700g"
+                htmlName="item-name"
+              />
+              <TextInput
                 label="Selling price (R)"
                 value={price}
                 onChange={setPrice}
                 placeholder="85.00"
                 htmlName="price"
+                status={priceMsg ? { type: 'error', message: priceMsg } : undefined}
+              />
+              <NumberInput
+                label="Quantity"
+                value={qty}
+                onChange={setQty}
+                min={0}
+                isIntegerOnly
+                hasNumberSteppers
+                width={110}
+                htmlName="quantity"
               />
               <Button
                 label="Add item"
                 variant="primary"
                 type="submit"
-                isDisabled={!barcode.trim() || !price.trim()}
+                isDisabled={!barcode.trim() || !price.trim() || !!priceMsg}
                 isLoading={adding}
               />
             </HStack>
@@ -394,9 +548,20 @@ function FirstStockStep({
               Added today ({added.length} item{added.length === 1 ? '' : 's'})
             </Heading>
             {added.map((it) => (
-              <HStack key={it.barcode + it.priceCents} gap={3} style={{ justifyContent: 'space-between' }}>
+              <HStack key={it.id} gap={3} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text type="body">{it.name}</Text>
-                <Text style={{ fontWeight: 600 }}>{rands(it.priceCents)}</Text>
+                <HStack gap={3} style={{ alignItems: 'center' }}>
+                  <Text type="supporting">{it.qty} in stock</Text>
+                  <Text style={{ fontWeight: 600 }}>{rands(it.priceCents)}</Text>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    label="Remove"
+                    onClick={() => removeItem(it)}
+                    isLoading={removingId === it.id}
+                    isDisabled={removingId !== null}
+                  />
+                </HStack>
               </HStack>
             ))}
           </VStack>
@@ -404,10 +569,11 @@ function FirstStockStep({
       )}
 
       <HStack gap={2} style={{ flexWrap: 'wrap' }}>
+        <Button variant="ghost" label="Back" onClick={onBack} isDisabled={adding} />
         <Button variant="ghost" label="Skip for now" onClick={done} isDisabled={adding} />
         <Button
           variant="primary"
-          label={adding ? 'Saving…' : `Done — go to ${shopName || 'my shop'}`}
+          label={adding ? 'Saving…' : `Done — view ${shopName ? `“${shopName}”` : 'my shop'}`}
           onClick={done}
           isLoading={adding}
         />

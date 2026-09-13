@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { VStack, HStack } from '@astryxdesign/core/Stack';
 import { Card } from '@astryxdesign/core/Card';
 import { Heading, Text } from '@astryxdesign/core/Text';
@@ -9,36 +8,47 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Table, proportional, pixel } from '@astryxdesign/core/Table';
 import { TextInput } from '@astryxdesign/core/TextInput';
+import { NumberInput } from '@astryxdesign/core/NumberInput';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
-import { inventoryApi, rands } from '@/lib/api/inventory';
+import { rands } from '@/lib/api/inventory';
+import type { InventoryItem } from '@/lib/api/inventory';
 import { catalogApi } from '@/lib/api/catalog';
-import { useInventory, useAddToStock } from '@/hooks/use-shops';
+import { useInventory, useAddToStock, useUpdateInventoryItem } from '@/hooks/use-shops';
 import { useFeedback } from '@/hooks/use-feedback';
 import BarcodeScanner from '@/components/BarcodeScanner';
 
 export default function InventoryPanel({ shopId }: { shopId: string }) {
-  const qc = useQueryClient();
   const feedback = useFeedback();
   const [barcode, setBarcode] = useState('');
+  const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [qty, setQty] = useState<number | null>(1);
 
   const { data: items = [], isLoading, isError } = useInventory(shopId);
   const addMutation = useAddToStock(shopId);
+  const restockMutation = useUpdateInventoryItem(shopId);
+  const [restockingId, setRestockingId] = useState<string | null>(null);
 
   const lowStock = items.filter((it) => it.stock_qty <= it.low_stock_threshold);
 
   const handleAdd = async () => {
     try {
-      // 1. Resolve the barcode to a product (creates a local item if unknown)
-      const product = await catalogApi.resolveBarcode(barcode.trim());
-      // 2. Put it on this shop's stock list at the selling price
-      await inventoryApi.add(shopId, product.id, Math.round(parseFloat(price || '0') * 100));
-      qc.invalidateQueries({ queryKey: ['inventory', shopId] });
-      feedback.success(`${product.name} added to stock`, product.id);
+      // 1. Resolve the barcode to a product (creates a local item if unknown —
+      //    `name` only takes effect then; an existing barcode keeps its name)
+      const product = await catalogApi.resolveBarcode(barcode.trim(), name.trim());
+      // 2. Put it on this shop's stock list at the selling price and quantity
+      const item = await addMutation.mutateAsync({
+        productId: product.id,
+        priceCents: Math.round(parseFloat(price || '0') * 100),
+        stockQty: qty ?? undefined,
+      });
+      feedback.success(`${product.name} added to stock`, item.id);
       setBarcode('');
+      setName('');
       setPrice('');
+      setQty(1);
     } catch (e) {
       feedback.error(
         (e as { status?: number })?.status === 401
@@ -48,6 +58,17 @@ export default function InventoryPanel({ shopId }: { shopId: string }) {
       );
     }
   };
+
+  async function restock(item: InventoryItem, addQty: number) {
+    setRestockingId(item.id);
+    try {
+      await restockMutation.mutateAsync({ itemId: item.id, patch: { stock_qty: item.stock_qty + addQty } });
+      feedback.success(`${item.product.name} restocked (+${addQty})`, item.id);
+    } catch {
+      feedback.error("Couldn't update stock — try again.", 'restock-item');
+    }
+    setRestockingId(null);
+  }
 
   const columns = [
     {
@@ -78,6 +99,14 @@ export default function InventoryPanel({ shopId }: { shopId: string }) {
         <Badge variant={it.is_available ? 'success' : 'neutral'} label={it.is_available ? 'On shelf' : 'Hidden'} />
       ),
     },
+    {
+      key: 'restock',
+      header: 'Restock',
+      width: pixel(160),
+      renderCell: (it: InventoryItem) => (
+        <RestockCell item={it} isSaving={restockingId === it.id} onRestock={(n) => restock(it, n)} />
+      ),
+    },
   ];
 
   return (
@@ -98,7 +127,18 @@ export default function InventoryPanel({ shopId }: { shopId: string }) {
             <VStack gap={3}>
               <HStack gap={3} style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <TextInput label="Product barcode" value={barcode} onChange={setBarcode} placeholder="Scan or type the barcode" htmlName="barcode" />
+                <TextInput label="Item name" description="Only used the first time this barcode is stocked anywhere" value={name} onChange={setName} placeholder="e.g. White bread 700g" htmlName="item-name" />
                 <TextInput label="Selling price (R)" value={price} onChange={setPrice} placeholder="85.00" htmlName="price" />
+                <NumberInput
+                  label="Quantity"
+                  value={qty}
+                  onChange={setQty}
+                  min={0}
+                  isIntegerOnly
+                  hasNumberSteppers
+                  width={110}
+                  htmlName="quantity"
+                />
                 <Button
                   label="Add to stock"
                   variant="primary"
@@ -130,5 +170,45 @@ export default function InventoryPanel({ shopId }: { shopId: string }) {
         )}
       </Card>
     </VStack>
+  );
+}
+
+function RestockCell({
+  item,
+  isSaving,
+  onRestock,
+}: {
+  item: InventoryItem;
+  isSaving: boolean;
+  onRestock: (addQty: number) => void;
+}) {
+  const [addQty, setAddQty] = useState<number | null>(null);
+  const valid = addQty !== null && addQty > 0;
+
+  return (
+    <HStack gap={2} style={{ alignItems: 'center' }}>
+      <NumberInput
+        label="Add quantity"
+        isLabelHidden
+        value={addQty}
+        onChange={setAddQty}
+        min={1}
+        isIntegerOnly
+        placeholder="+ qty"
+        width={80}
+        htmlName={`restock-${item.id}`}
+      />
+      <Button
+        label="Add"
+        size="sm"
+        variant="secondary"
+        isDisabled={!valid || isSaving}
+        isLoading={isSaving}
+        onClick={() => {
+          onRestock(addQty!);
+          setAddQty(null);
+        }}
+      />
+    </HStack>
   );
 }

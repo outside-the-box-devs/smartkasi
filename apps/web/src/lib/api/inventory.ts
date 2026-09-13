@@ -54,12 +54,36 @@ export const inventoryApi = {
     return rows.map(toItem);
   },
 
-  /** Adds a product to the shop's stock list at a given selling price. */
-  add(shopId: string, productId: string, priceCents: number): Promise<unknown> {
-    return apiFetch(`/shops/${shopId}/inventory`, {
-      method: 'POST',
-      body: JSON.stringify({ product_id: productId, price_cents: priceCents }),
-    });
+  /** Adds a product to the shop's stock list at a given selling price and
+   *  starting quantity (defaults to 0 on the API if omitted). */
+  async add(shopId: string, productId: string, priceCents: number, stockQty?: number): Promise<InventoryItem> {
+    const raw = await unwrap<Record<string, any>>(
+      await apiFetch(`/shops/${shopId}/inventory`, {
+        method: 'POST',
+        body: JSON.stringify({
+          product_id: productId,
+          price_cents: priceCents,
+          ...(stockQty !== undefined ? { stock_qty: stockQty } : {}),
+        }),
+      }),
+    );
+    return toItem(raw);
+  },
+
+  /** Patch a stock line — used to correct a price, restock a quantity, or
+   *  take it off the shelf (`is_available: false`) without deleting the row. */
+  async update(
+    shopId: string,
+    shopProductId: string,
+    patch: Partial<{ price_cents: number; stock_qty: number; is_available: boolean }>,
+  ): Promise<InventoryItem> {
+    const raw = await unwrap<Record<string, any>>(
+      await apiFetch(`/shops/${shopId}/inventory/${shopProductId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    );
+    return toItem(raw);
   },
 };
 

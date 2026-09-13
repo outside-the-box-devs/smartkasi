@@ -32,12 +32,17 @@ export const catalogApi = {
   /**
    * Resolve a scanned barcode to a product id — creating a catalog entry for
    * unknown barcodes (shop-local item) so inventory can reference it.
+   *
+   * `POST /products` returns the *existing* product (ignoring `name`) when
+   * the barcode already matches one, so `name` only ever takes effect for a
+   * genuinely new item — pass whatever the owner typed, and fall back to a
+   * placeholder only if they left it blank.
    */
-  async resolveBarcode(barcode: string): Promise<{ id: string; name: string }> {
+  async resolveBarcode(barcode: string, name?: string): Promise<{ id: string; name: string }> {
     const raw = await unwrap<any>(
       await apiFetch('/products', {
         method: 'POST',
-        body: JSON.stringify({ barcode, name: `Scanned ${barcode}` }),
+        body: JSON.stringify({ barcode, name: name?.trim() || `Item ${barcode}` }),
       }),
     );
     return { id: raw.id, name: raw.name };

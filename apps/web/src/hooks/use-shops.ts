@@ -51,8 +51,19 @@ export function useLowStock(shopIds: string[]) {
 export function useAddToStock(shopId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ productId, priceCents }: { productId: string; priceCents: number }) =>
-      inventoryApi.add(shopId, productId, priceCents),
+    mutationFn: async ({ productId, priceCents, stockQty }: { productId: string; priceCents: number; stockQty?: number }) =>
+      inventoryApi.add(shopId, productId, priceCents, stockQty),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', shopId] }),
+  });
+}
+
+/** Patch an inventory line — restocking a quantity, correcting a price, or
+ *  taking it off the shelf (`is_available: false`). */
+export function useUpdateInventoryItem(shopId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, patch }: { itemId: string; patch: Parameters<typeof inventoryApi.update>[2] }) =>
+      inventoryApi.update(shopId, itemId, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', shopId] }),
   });
 }
@@ -61,6 +72,26 @@ export function useCreateShop() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: Parameters<typeof shopsApi.create>[0]) => shopsApi.create(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shops'] }),
+  });
+}
+
+export function useUpdateShop() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof shopsApi.update>[1] }) =>
+      shopsApi.update(id, patch),
+    onSuccess: (shop) => {
+      qc.invalidateQueries({ queryKey: ['shops'] });
+      qc.invalidateQueries({ queryKey: ['shop', shop.id] });
+    },
+  });
+}
+
+export function useDeleteShop() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => shopsApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shops'] }),
   });
 }

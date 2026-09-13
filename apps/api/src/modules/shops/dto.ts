@@ -47,6 +47,8 @@ export class CreateShopDto {
   @Type(() => Number) @IsLongitude() lng: number;
   @IsOptional() @IsString() opens_at?: string;
   @IsOptional() @IsString() closes_at?: string;
+  @IsOptional() @IsEnum(ShopMode) mode?: ShopMode;
+  @IsOptional() @Type(() => Boolean) @IsBoolean() is_active?: boolean;
 }
 
 export class UpdateShopDto {
@@ -55,6 +57,9 @@ export class UpdateShopDto {
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsUrl() logo_url?: string;
   @IsOptional() @IsString() address_line?: string;
+  @IsOptional() @IsString() township?: string;
+  @IsOptional() @IsString() city?: string;
+  @IsOptional() @IsString() province?: string;
   @IsOptional() @Type(() => Number) @IsLatitude() lat?: number;
   @IsOptional() @Type(() => Number) @IsLongitude() lng?: number;
   @IsOptional() @IsString() opens_at?: string;

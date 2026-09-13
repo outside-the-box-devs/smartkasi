@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -51,6 +52,15 @@ export class ShopsController {
     @Body() dto: UpdateShopDto,
   ) {
     return this.service.update(user, shopId, dto);
+  }
+
+  @Delete(':shopId')
+  @HttpCode(204)
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('shopId', ParseUUIDPipe) shopId: string,
+  ) {
+    return this.service.remove(user, shopId);
   }
 
   @Post(':shopId/licence')

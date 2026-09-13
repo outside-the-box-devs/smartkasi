@@ -627,6 +627,28 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [Shops]
+      summary: "[LIVE] Delete a shop"
+      description: |
+        Owner only, and only while the shop has no order history — a shop with
+        orders is rejected with `SHOP_HAS_ORDERS`; set `is_active: false` via
+        `PATCH` instead. Inventory, sales, staff and follows for the shop are
+        removed along with it.
+
+        Mainly exists so the shop-creation wizard's Cancel can undo a shop
+        created earlier in the flow rather than leaving an empty orphan shop.
+      operationId: deleteShop
+      x-smartkasi-status: LIVE
+      responses:
+        "204": { description: Deleted. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`SHOP_HAS_ORDERS` — this shop has order history and cannot be deleted."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /shops/{shopId}/licence:
     parameters:
@@ -2431,6 +2453,7 @@ components:
                 - RATE_LIMITED
                 - NOT_IMPLEMENTED
                 - INTERNAL_ERROR
+                - SHOP_HAS_ORDERS
             message: { type: string }
             details:
               type: array
@@ -2569,6 +2592,13 @@ components:
         lng: { type: number, format: double, example: 27.9083 }
         opens_at: { type: string, example: "07:00" }
         closes_at: { type: string, example: "20:00" }
+        mode:
+          allOf: [{ $ref: "#/components/schemas/ShopMode" }]
+          default: advertising_only
+        is_active:
+          type: boolean
+          default: true
+          description: Whether the shop is visible to customers yet.
 
     UpdateShopRequest:
       type: object
@@ -2578,6 +2608,9 @@ components:
         phone: { type: string }
         logo_url: { type: string, format: uri }
         address_line: { type: string }
+        township: { type: string }
+        city: { type: string }
+        province: { type: string }
         lat: { type: number, format: double }
         lng: { type: number, format: double }
         opens_at: { type: string }

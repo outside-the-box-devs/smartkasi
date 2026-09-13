@@ -8,10 +8,13 @@ import { Heading, Text } from '@astryxdesign/core/Text';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Spinner } from '@astryxdesign/core/Spinner';
+import { Banner } from '@astryxdesign/core/Banner';
+import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
+import { Switch } from '@astryxdesign/core/Switch';
 import { useAuth } from '@/lib/auth/auth-context';
-import { useShop } from '@/hooks/use-shops';
+import { useShop, useUpdateShop } from '@/hooks/use-shops';
 import { friendlyLicence } from '@/lib/api/shops';
-import type { ShopDetail } from '@/lib/api/shops';
+import type { ShopDetail, ShopMode } from '@/lib/api/shops';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -103,14 +106,88 @@ function ShopDetailInner() {
 }
 
 function OverviewCard({ shop }: { shop: ShopDetail }) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return <EditShopTypeForm shop={shop} onDone={() => setEditing(false)} />;
+  }
+
   return (
     <Card>
       <VStack gap={3}>
         {shop.description && <Text type="body">{shop.description}</Text>}
-        <HStack gap={6} style={{ flexWrap: 'wrap' }}>
-          <Fact label="Shop type" value={friendlyMode(shop.mode)} />
-          <Fact label="Orders" value={shop.accepts_orders ? 'Open to customers' : 'Closed'} />
-          <Fact label="Visibility" value={shop.is_active === false ? 'Hidden from customers' : 'Visible to customers'} />
+        <HStack gap={6} style={{ flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <HStack gap={6} style={{ flexWrap: 'wrap' }}>
+            <Fact label="Shop type" value={friendlyMode(shop.mode)} />
+            <Fact label="Orders" value={shop.accepts_orders ? 'Open to customers' : 'Closed'} />
+            <Fact label="Visibility" value={shop.is_active === false ? 'Hidden from customers' : 'Visible to customers'} />
+          </HStack>
+          <Button variant="ghost" size="sm" label="Edit" onClick={() => setEditing(true)} />
+        </HStack>
+      </VStack>
+    </Card>
+  );
+}
+
+function EditShopTypeForm({ shop, onDone }: { shop: ShopDetail; onDone: () => void }) {
+  const updateShop = useUpdateShop();
+  const [mode, setMode] = useState<ShopMode>(shop.mode);
+  const [isActive, setIsActive] = useState(shop.is_active);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    try {
+      await updateShop.mutateAsync({ id: shop.id, patch: { mode, is_active: isActive } });
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save changes — try again.');
+    }
+  }
+
+  return (
+    <Card>
+      <VStack gap={4}>
+        {error && (
+          <Banner status="warning" title={error} isDismissable onDismiss={() => setError(null)} />
+        )}
+        <RadioList
+          label="Shop type"
+          description="Change this any time — it doesn't affect your stock or licence."
+          value={mode}
+          onChange={(v) => setMode(v as ShopMode)}
+        >
+          <RadioListItem
+            label="Advertising only"
+            value="advertising_only"
+            description="Show up on the map with your details. No prices or stock shown yet."
+          />
+          <RadioListItem
+            label="Stock only"
+            value="inventory_only"
+            description="List your products and prices so customers can compare, but they still buy in person."
+          />
+          <RadioListItem
+            label="Full store"
+            value="full"
+            description="Customers can browse your stock and order for delivery or collection, once your trading licence is verified."
+          />
+        </RadioList>
+        <Switch
+          label="Visible to customers"
+          description="Off keeps this shop private."
+          value={isActive}
+          onChange={setIsActive}
+          labelSpacing="spread"
+        />
+        <HStack gap={2} style={{ flexWrap: 'wrap' }}>
+          <Button variant="ghost" label="Cancel" onClick={onDone} isDisabled={updateShop.isPending} />
+          <Button
+            variant="primary"
+            label={updateShop.isPending ? 'Saving…' : 'Save changes'}
+            onClick={save}
+            isLoading={updateShop.isPending}
+          />
         </HStack>
       </VStack>
     </Card>

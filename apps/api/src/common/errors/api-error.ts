@@ -29,6 +29,7 @@ export enum ApiErrorCode {
   RATE_LIMITED = 'RATE_LIMITED',
   NOT_IMPLEMENTED = 'NOT_IMPLEMENTED',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
+  SHOP_HAS_ORDERS = 'SHOP_HAS_ORDERS',
 }
 
 export interface ApiErrorDetail {

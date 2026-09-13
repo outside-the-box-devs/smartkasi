@@ -100,11 +100,41 @@ export const shopsApi = {
     description?: string;
     lat: number;
     lng: number;
+    mode?: ShopMode;
+    is_active?: boolean;
   }): Promise<ShopDetail> {
     const raw = await unwrap<Record<string, unknown>>(
       await apiFetch('/shops', { method: 'POST', body: JSON.stringify(input) }),
     );
     return toDetail(raw);
+  },
+
+  /** Patch an existing shop. Only send fields that changed. */
+  async update(
+    id: string,
+    input: Partial<{
+      name: string;
+      address_line: string;
+      township: string;
+      city: string;
+      province: string;
+      phone: string;
+      description: string;
+      lat: number;
+      lng: number;
+      mode: ShopMode;
+      is_active: boolean;
+    }>,
+  ): Promise<ShopDetail> {
+    const raw = await unwrap<Record<string, unknown>>(
+      await apiFetch(`/shops/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+    );
+    return toDetail(raw);
+  },
+
+  /** Hard-deletes a shop. Only succeeds while it has no order history. */
+  remove(id: string): Promise<void> {
+    return apiFetch(`/shops/${id}`, { method: 'DELETE' });
   },
 };
 
