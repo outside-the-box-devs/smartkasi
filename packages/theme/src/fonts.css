@@ -1,0 +1,6 @@
+/* SmartKasi brand typefaces.
+   tokens.json names Outfit (body + heading) and JetBrains Mono (code); apps/web
+   loads them through next/font/google, which only exists at Next build time.
+   Anything consuming @smartkasi/theme outside Next — the Claude Design bundle,
+   a static page, an email preview — needs them declared somewhere. Here. */
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
