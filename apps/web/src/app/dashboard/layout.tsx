@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { NavIcon } from "@astryxdesign/core/NavIcon";
 import {
@@ -45,9 +45,17 @@ export default function DashboardLayout({
   );
 }
 
+/** A section link is "current" on an exact match, or anywhere under it —
+ *  except Dashboard itself, which would otherwise match every route. */
+function isCurrent(pathname: string, href: string): boolean {
+  if (href === "/dashboard") return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const { mode, setMode } = useThemeMode();
 
   return (
@@ -103,17 +111,29 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           }
         >
           <SideNavSection title="Operations">
-            <SideNavItem label="Dashboard" icon={HomeIcon} href="/dashboard" />
+            <SideNavItem
+              label="Dashboard"
+              icon={HomeIcon}
+              href="/dashboard"
+              isSelected={isCurrent(pathname, "/dashboard")}
+            />
             <SideNavItem
               label="Shops"
               icon={BuildingStorefrontIcon}
               href="/dashboard/shops"
+              isSelected={isCurrent(pathname, "/dashboard/shops")}
             />
-            <SideNavItem label="Map" icon={MapIcon} href="/dashboard/map" />
+            <SideNavItem
+              label="Map"
+              icon={MapIcon}
+              href="/dashboard/map"
+              isSelected={isCurrent(pathname, "/dashboard/map")}
+            />
             <SideNavItem
               label="Orders"
               icon={ShoppingBagIcon}
               href="/dashboard/orders"
+              isSelected={isCurrent(pathname, "/dashboard/orders")}
             />
           </SideNavSection>
         </SideNav>

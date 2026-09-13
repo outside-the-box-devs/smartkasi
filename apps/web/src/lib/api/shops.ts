@@ -147,3 +147,14 @@ export function friendlyLicence(s: LicenceStatus): string {
     default: return 'Not submitted';
   }
 }
+
+/** StatusDot variant for a licence status — pair with friendlyLicence() for the visible label. */
+export function licenceDotVariant(s: LicenceStatus): 'success' | 'warning' | 'error' | 'neutral' {
+  switch (s) {
+    case 'verified': return 'success';
+    case 'pending': return 'warning';
+    case 'rejected':
+    case 'expired': return 'error';
+    default: return 'neutral';
+  }
+}

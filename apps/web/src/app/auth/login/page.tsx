@@ -20,13 +20,20 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+
+  function validate(): boolean {
+    const errs: typeof fieldErrors = {};
+    if (!email.trim()) errs.email = 'Enter your email address.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = 'Enter a valid email address.';
+    if (!password) errs.password = 'Enter your password.';
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
   const handleSignIn = async () => {
     setError(null);
-    if (!email || !password) {
-      setError('Enter your email and password.');
-      return;
-    }
+    if (!validate()) return;
     setIsLoading(true);
     try {
       await signIn(email, password);
@@ -60,23 +67,33 @@ export default function LoginPage() {
 
               {error && <Banner status="error" title={error} container="card" />}
 
-              <TextInput label="Email" value={email} onChange={setEmail} placeholder="you@shop.co.za" type="email" size="lg" htmlName="email" />
+              <TextInput
+                label="Email"
+                value={email}
+                onChange={(v) => { setEmail(v); if (fieldErrors.email) setFieldErrors((f) => ({ ...f, email: undefined })); }}
+                placeholder="you@shop.co.za"
+                type="email"
+                size="lg"
+                htmlName="email"
+                status={fieldErrors.email ? { type: 'error', message: fieldErrors.email } : undefined}
+              />
               <TextInput
                 label="Password"
                 value={password}
-                onChange={setPassword}
+                onChange={(v) => { setPassword(v); if (fieldErrors.password) setFieldErrors((f) => ({ ...f, password: undefined })); }}
                 placeholder="Your password"
                 type="password"
                 size="lg"
                 htmlName="password"
+                status={fieldErrors.password ? { type: 'error', message: fieldErrors.password } : undefined}
               />
 
               <Button label="Sign in" variant="primary" size="lg" isLoading={isLoading} type="submit" />
             </VStack>
           </form>
 
-          <HStack gap={3} hAlign="center">
-            <Text type="body" color="secondary" size="sm">New here?</Text>
+          <HStack gap={2} hAlign="center" vAlign="center" wrap="nowrap">
+            <Text type="body" color="secondary">New here?</Text>
             <Button label="Create an account" variant="ghost" onClick={() => router.push('/auth/register')} />
           </HStack>
         </Card>

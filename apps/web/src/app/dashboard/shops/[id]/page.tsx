@@ -5,15 +5,16 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { VStack, HStack } from '@astryxdesign/core/Stack';
 import { Card } from '@astryxdesign/core/Card';
 import { Heading, Text } from '@astryxdesign/core/Text';
-import { Badge } from '@astryxdesign/core/Badge';
+import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Button } from '@astryxdesign/core/Button';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { Banner } from '@astryxdesign/core/Banner';
+import { TabList, Tab } from '@astryxdesign/core/TabList';
 import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
 import { Switch } from '@astryxdesign/core/Switch';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useShop, useUpdateShop } from '@/hooks/use-shops';
-import { friendlyLicence } from '@/lib/api/shops';
+import { friendlyLicence, licenceDotVariant } from '@/lib/api/shops';
 import type { ShopDetail, ShopMode } from '@/lib/api/shops';
 
 const TABS = [
@@ -47,20 +48,31 @@ function ShopDetailInner() {
   const shopId = params.id;
   const searchParams = useSearchParams();
   const router = useRouter();
-  // Tabs live in the URL (?tab=stock) so refresh, back and deep links work.
+  // Tabs live in the URL (?tab=stock) alone — no local override — so a deep
+  // link or any other in-app navigation to a new ?tab= is never shadowed by
+  // stale component state.
   const tabParam = searchParams.get('tab') ?? '';
-  const initialTab = (TABS.some(([key]) => key === tabParam) ? tabParam : 'overview') as TabKey;
-  const [tabOverride, setTabOverride] = useState<TabKey | null>(null);
-  const tab = tabOverride ?? initialTab;
+  const tab = (TABS.some(([key]) => key === tabParam) ? tabParam : 'overview') as TabKey;
   const { user } = useAuth();
-  const { data: shop, isLoading } = useShop(shopId);
+  const { data: shop, isLoading, isError } = useShop(shopId);
 
-  function switchTab(key: TabKey) {
-    setTabOverride(key);
+  function switchTab(key: string) {
     router.replace(`/dashboard/shops/${shopId}?tab=${key}`, { scroll: false });
   }
 
   if (isLoading) return <Spinner size="md" />;
+  if (isError) {
+    return (
+      <VStack gap={2}>
+        <Banner
+          status="error"
+          title="Can't load this shop right now"
+          description="Check your connection and refresh the page."
+        />
+        <Button variant="secondary" label="← Back to shops" onClick={() => router.push('/dashboard/shops')} />
+      </VStack>
+    );
+  }
   if (!shop) {
     return (
       <VStack gap={2}>
@@ -75,11 +87,20 @@ function ShopDetailInner() {
       <VStack gap={2}>
         <HStack gap={3} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Heading level={2}>{shop.name}</Heading>
-          <Badge
-            variant={shop.licence_status === 'verified' ? 'success' : shop.licence_status === 'pending' ? 'warning' : 'neutral'}
-            label={friendlyLicence(shop.licence_status)}
-          />
-          <Badge variant={shop.accepts_orders ? 'teal' : 'neutral'} label={shop.accepts_orders ? 'Taking orders' : 'Not taking orders'} />
+          <HStack gap={2} style={{ alignItems: 'center' }}>
+            <StatusDot
+              variant={licenceDotVariant(shop.licence_status)}
+              label={friendlyLicence(shop.licence_status)}
+            />
+            <Text type="supporting">{friendlyLicence(shop.licence_status)}</Text>
+          </HStack>
+          <HStack gap={2} style={{ alignItems: 'center' }}>
+            <StatusDot
+              variant={shop.accepts_orders ? 'success' : 'neutral'}
+              label={shop.accepts_orders ? 'Taking orders' : 'Not taking orders'}
+            />
+            <Text type="supporting">{shop.accepts_orders ? 'Taking orders' : 'Not taking orders'}</Text>
+          </HStack>
         </HStack>
         {(shop.address_line || shop.township) && (
           <Text type="body" color="secondary">
@@ -89,10 +110,12 @@ function ShopDetailInner() {
         {user && <Text type="supporting">Signed in as {user.email}</Text>}
       </VStack>
 
-      <HStack gap={2} style={{ flexWrap: 'wrap' }}>
-        {TABS.map(([key, label]) => (
-          <Button key={key} size="sm" variant={tab === key ? 'primary' : 'secondary'} label={label} onClick={() => switchTab(key)} />
-        ))}
+      <HStack gap={3} style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <TabList value={tab} onChange={switchTab} hasDivider>
+          {TABS.map(([key, label]) => (
+            <Tab key={key} value={key} label={label} />
+          ))}
+        </TabList>
         <Button size="sm" variant="ghost" label="← All shops" onClick={() => router.push('/dashboard/shops')} />
       </HStack>
 

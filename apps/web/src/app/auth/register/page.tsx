@@ -23,17 +23,22 @@ export default function RegisterPage() {
   const [role, setRole] = useState('shop_owner');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ fullName?: string; email?: string; password?: string }>({});
+
+  function validate(): boolean {
+    const errs: typeof fieldErrors = {};
+    if (!fullName.trim()) errs.fullName = 'Enter your name.';
+    if (!email.trim()) errs.email = 'Enter your email address.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = 'Enter a valid email address.';
+    if (!password) errs.password = 'Choose a password.';
+    else if (password.length < 6) errs.password = 'At least 6 characters.';
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
   const handleRegister = async () => {
     setError(null);
-    if (!fullName || !email || !password) {
-      setError('Fill in your name, email and a password.');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Choose a password with at least 6 characters.');
-      return;
-    }
+    if (!validate()) return;
     setIsLoading(true);
     try {
       await signUp(email.trim(), password, fullName.trim(), role);
@@ -67,9 +72,35 @@ export default function RegisterPage() {
 
               {error && <Banner status="error" title={error} container="card" />}
 
-              <TextInput label="Full name" value={fullName} onChange={setFullName} placeholder="Thoko Ndlovu" size="lg" htmlName="full-name" />
-              <TextInput label="Email" value={email} onChange={setEmail} placeholder="you@shop.co.za" type="email" size="lg" htmlName="email" />
-              <TextInput label="Password" value={password} onChange={setPassword} placeholder="At least 6 characters" type="password" size="lg" htmlName="password" />
+              <TextInput
+                label="Full name"
+                value={fullName}
+                onChange={(v) => { setFullName(v); if (fieldErrors.fullName) setFieldErrors((f) => ({ ...f, fullName: undefined })); }}
+                placeholder="Thoko Ndlovu"
+                size="lg"
+                htmlName="full-name"
+                status={fieldErrors.fullName ? { type: 'error', message: fieldErrors.fullName } : undefined}
+              />
+              <TextInput
+                label="Email"
+                value={email}
+                onChange={(v) => { setEmail(v); if (fieldErrors.email) setFieldErrors((f) => ({ ...f, email: undefined })); }}
+                placeholder="you@shop.co.za"
+                type="email"
+                size="lg"
+                htmlName="email"
+                status={fieldErrors.email ? { type: 'error', message: fieldErrors.email } : undefined}
+              />
+              <TextInput
+                label="Password"
+                value={password}
+                onChange={(v) => { setPassword(v); if (fieldErrors.password) setFieldErrors((f) => ({ ...f, password: undefined })); }}
+                placeholder="At least 6 characters"
+                type="password"
+                size="lg"
+                htmlName="password"
+                status={fieldErrors.password ? { type: 'error', message: fieldErrors.password } : undefined}
+              />
 
               <Selector
                 label="I am a…"
@@ -84,8 +115,8 @@ export default function RegisterPage() {
 
               <Button label="Create account" variant="primary" size="lg" isLoading={isLoading} type="submit" />
 
-              <HStack gap={3} hAlign="center">
-                <Text type="body" color="secondary" size="sm">Already registered?</Text>
+              <HStack gap={2} hAlign="center" vAlign="center" wrap="nowrap">
+                <Text type="body" color="secondary">Already registered?</Text>
                 <Button label="Sign in" variant="ghost" onClick={() => router.push('/auth/login')} />
               </HStack>
             </VStack>
