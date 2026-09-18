@@ -65,26 +65,44 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // Serve the hand-written contract, not a generated one. openapi.yaml is the
-  // source of truth; if this warns, the contract file moved.
-  try {
-    const specPath = join(
-      process.cwd(),
-      '..',
-      '..',
-      'packages',
-      'contract',
-      'openapi.yaml',
-    );
-    const spec = parseYaml(readFileSync(specPath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    SwaggerModule.setup('docs', app, spec as never, {
-      customSiteTitle: 'SmartKasi API',
-    });
-  } catch {
+  // source of truth.
+  //
+  // Two candidates, in order. `dist/openapi.yaml` is the copy that
+  // `scripts/copy-contract.mjs` places next to the compiled entrypoint at build
+  // time; it is the one that exists in a deployed image. The monorepo path is
+  // the fallback for `nest start` in development, where nothing has been built.
+  //
+  // The monorepo path alone is not enough in production: `apps/api` does not
+  // depend on `@smartkasi/contract`, so a workspace-pruning builder drops
+  // `packages/` from the runtime image, and a deploy Root Directory of
+  // `apps/api` excludes it too. That is how /docs 404d on a healthy API.
+  const specCandidates = [
+    join(__dirname, 'openapi.yaml'),
+    join(process.cwd(), '..', '..', 'packages', 'contract', 'openapi.yaml'),
+  ];
+
+  const loaded = specCandidates.find((candidate) => {
+    try {
+      const spec = parseYaml(readFileSync(candidate, 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      SwaggerModule.setup('docs', app, spec as never, {
+        customSiteTitle: 'SmartKasi API',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  if (loaded) {
+    Logger.log(`Contract loaded from ${loaded}`, 'Bootstrap');
+  } else {
+    // Name the paths. The previous version warned without them, which is why a
+    // missing contract read as a routing problem rather than a missing file.
     Logger.warn(
-      'packages/contract/openapi.yaml not found — /docs disabled',
+      `openapi.yaml not found — /docs disabled. Tried: ${specCandidates.join(', ')}`,
       'Bootstrap',
     );
   }
