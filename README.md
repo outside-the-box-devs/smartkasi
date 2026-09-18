@@ -278,6 +278,24 @@ Railway environment variables override the defaults in
 `apps/api/src/config/configuration.ts`. Changing a fee constant in code does
 nothing on its own — see `CONTRIBUTING.md` § 7.
 
+**Build and start commands live in the repo, not the dashboard.** `railway.api.json`
+and `railway.web.json` at the repository root hold them. In each Railway service set
+**Settings → Config-as-code** to the matching file and leave **Root Directory** empty.
+That one dashboard field is all a fresh Railway account needs. It was learnt the hard
+way: a move to a new account lost every setting, and railpack's `prepare` step then
+failed with no start command, because the root `package.json` has none.
+
+Root Directory must stay at the repository root. Point a service at `apps/api` and
+`packages/` drops out of the build context — `apps/api/src/main.ts:70` resolves the
+Swagger spec at `process.cwd()/../../packages/contract/openapi.yaml`, and the
+`try/catch` around it means `/docs` disappears silently instead of failing the deploy.
+The start commands go through `npm run … --workspace <name>`, which sets the working
+directory to the app and keeps that path resolving.
+
+The cost is that each service installs the whole workspace, so a `web` deploy also
+pulls the API's dependencies and the reverse. Slower builds in exchange for a deploy
+that survives an account move.
+
 ### Vercel — unresolved
 
 Two projects exist: `smartkasi` under `lethabo-maepas-projects`, and

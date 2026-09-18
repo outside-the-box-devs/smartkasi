@@ -369,6 +369,11 @@ Each would have cost you an evening.
    `start:prod` still ran `node dist/main`. It is now excluded in
    `tsconfig.build.json`.
 
+   That exclusion was incomplete: `prisma/seed.ts` was still inside the
+   compilation root, so the output stayed at `dist/src/main.js` and
+   `start:prod` still could not find it. `prisma` and `scripts` are now
+   excluded too, and `nest build` emits `dist/main.js` as the script expects.
+
 2. **Prisma 7 emits `.ts` extensions in its generated relative imports.** Under
    `moduleResolution: "nodenext"` tsc leaves them verbatim and the built app dies
    on `require('./internal/class.ts')`. Fixed with `importFileExtension = ""` on
