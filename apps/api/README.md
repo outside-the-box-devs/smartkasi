@@ -360,7 +360,7 @@ day's takings.
 number.** See `docs/API_CONTRACT.md` § Route privacy. Safety constraint, not a
 preference.
 
-## Three build gotchas already fixed here
+## Four build gotchas already fixed here
 
 Each would have cost you an evening.
 
@@ -386,6 +386,18 @@ Each would have cost you an evening.
    between patch releases, which showed up as a stale local copy passing while a
    fresh one in CI failed on 24 files over a leading newline. It is in the
    `ignores` block in `eslint.config.mjs`.
+
+4. **`/docs` 404d on a healthy production deploy.** `main.ts` read the
+   contract from `process.cwd()/../../packages/contract/openapi.yaml`, but
+   `apps/api` declares no dependency on `@smartkasi/contract`, so a
+   workspace-pruning builder has no reason to keep `packages/` in the runtime
+   image — and a Railway Root Directory of `apps/api` excludes it from the
+   build context outright. The read threw, the `catch` swallowed it, and the
+   warning named no path, so a missing file looked like a routing problem.
+   `scripts/copy-contract.mjs` now copies the spec into `dist/` at build time
+   and **fails the build** if it cannot find it; `main.ts` prefers
+   `dist/openapi.yaml` and keeps the monorepo path as the `nest start`
+   fallback.
 
 Also note `main.ts` installs a `BigInt.prototype.toJSON` polyfill. Prisma maps
 Postgres `bigint` to JS `BigInt` and `JSON.stringify` throws on it, so every
